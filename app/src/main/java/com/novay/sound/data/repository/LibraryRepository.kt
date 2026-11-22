@@ -2,6 +2,10 @@ package com.novay.sound.data.repository
 
 import com.novay.sound.data.db.dao.PlaylistDao
 import com.novay.sound.data.db.dao.SongDao
+import com.novay.sound.data.db.dao.StatsDao
+import com.novay.sound.data.db.entity.ArtistStat
+import com.novay.sound.data.db.entity.PlayEventEntity
+import com.novay.sound.data.db.entity.SongStat
 import com.novay.sound.data.db.entity.PlaylistEntity
 import com.novay.sound.data.db.entity.PlaylistWithCount
 import com.novay.sound.data.model.Song
@@ -16,7 +20,8 @@ import javax.inject.Singleton
 @Singleton
 class LibraryRepository @Inject constructor(
     private val songDao: SongDao,
-    private val playlistDao: PlaylistDao
+    private val playlistDao: PlaylistDao,
+    private val statsDao: StatsDao
 ) {
     // ---- Akışlar (Compose) ----
     val recent: Flow<List<Song>> = songDao.observeRecent().map { it.map { e -> e.toSong() } }
@@ -45,6 +50,17 @@ class LibraryRepository @Inject constructor(
     }
 
     suspend fun clearHistory() = songDao.clearHistory()
+
+    suspend fun isLikedNow(id: String): Boolean = songDao.getById(id)?.likedAt != null
+
+    // ---- İstatistik ----
+    suspend fun recordPlay(songId: String, listenedMs: Long) =
+        statsDao.insert(PlayEventEntity(songId = songId, playedAt = System.currentTimeMillis(), listenedMs = listenedMs))
+
+    fun totalListened(since: Long): Flow<Long> = statsDao.totalListened(since)
+    fun totalPlays(since: Long): Flow<Int> = statsDao.totalPlays(since)
+    fun topSongs(since: Long): Flow<List<SongStat>> = statsDao.topSongs(since)
+    fun topArtists(since: Long): Flow<List<ArtistStat>> = statsDao.topArtists(since)
 
     // ---- Çalma listesi ----
     suspend fun createPlaylist(name: String): Long =

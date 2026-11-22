@@ -127,6 +127,10 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.androidx.palette)
 
+    // Ana ekran widget'ı + haftalık otomatik yedek
+    implementation(libs.glance.appwidget)
+    implementation(libs.work.runtime)
+
     // Coroutines + JSON yedekleme
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.guava)

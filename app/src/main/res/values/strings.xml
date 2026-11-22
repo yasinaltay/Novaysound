@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">Novay Sound</string>
     <string name="download_channel">İndirmeler</string>
+    <string name="widget_desc">Çalan şarkı ve oynatma kontrolleri</string>
 </resources>

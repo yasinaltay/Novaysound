@@ -3,6 +3,7 @@ package com.novay.sound.playback
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -13,24 +14,39 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.LibraryParams
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.novay.sound.R
 import com.novay.sound.data.model.Song
 import com.novay.sound.data.repository.LibraryRepository
+import com.novay.sound.data.settings.SettingsRepository
+import com.novay.sound.data.youtube.SponsorBlockRepository
 import com.novay.sound.data.youtube.YouTubeRepository
+import com.novay.sound.util.CrashLogger
+import com.novay.sound.widget.WidgetUpdater
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.guava.future
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -38,19 +54,41 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class PlaybackService : MediaLibraryService() {
 
+    companion object {
+        const val CMD_LIKE = "novay.LIKE"
+    }
+
     @Inject lateinit var dataSourceFactory: AudioDataSourceFactory
     @Inject lateinit var library: LibraryRepository
     @Inject lateinit var youtube: YouTubeRepository
     @Inject lateinit var tree: LibraryTree
+    @Inject lateinit var sleepTimer: SleepTimer
+    @Inject lateinit var effects: AudioEffects
+    @Inject lateinit var sponsorBlock: SponsorBlockRepository
+    @Inject lateinit var settings: SettingsRepository
+    @Inject lateinit var widget: WidgetUpdater
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var player: ExoPlayer
     private var session: MediaLibrarySession? = null
 
-    /** Kuyruk bitmek üzereyken benzer şarkıları otomatik ekle (sonsuz radyo). */
-    var autoRadio = true
     private var radioJob: Job? = null
+    private var skipJob: Job? = null
+    private var fadeJob: Job? = null
     private val retryCount = mutableMapOf<String, Int>()
+    private val currentId = MutableStateFlow<String?>(null)
+
+    // Sonsuz radyo + SponsorBlock ayarı (DataStore'dan)
+    private var autoRadio = true
+    private var sponsorEnabled = true
+    private var segments: List<LongRange> = emptyList()
+
+    // Dinleme istatistiği
+    private var trackedSong: Song? = null
+    private var listenedMs = 0L
+    private var playingSince: Long? = null
+
+    private val likeCommand = SessionCommand(CMD_LIKE, Bundle.EMPTY)
 
     override fun onCreate() {
         super.onCreate()
@@ -69,6 +107,8 @@ class PlaybackService : MediaLibraryService() {
             .build()
             .apply { addListener(PlayerListener()) }
 
+        effects.attach(player.audioSessionId)
+
         val openApp = packageManager.getLaunchIntentForPackage(packageName)?.let {
             PendingIntent.getActivity(
                 this, 0, it.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
@@ -78,7 +118,15 @@ class PlaybackService : MediaLibraryService() {
 
         session = MediaLibrarySession.Builder(this, player, LibraryCallback())
             .apply { openApp?.let { setSessionActivity(it) } }
+            .setCustomLayout(ImmutableList.of(likeButton(false)))
             .build()
+
+        observeLikeState()
+        scope.launch { settings.settings.collect { sponsorEnabled = it.sponsorBlock } }
+        scope.launch { sleepTimer.fire.collect { fadeOutAndPause() } }
+        scope.launch {
+            sleepTimer.state.collect { player.pauseAtEndOfMediaItems = it.endOfSong }
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
@@ -91,6 +139,8 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        flushListen()
+        effects.release()
         scope.cancel()
         session?.run {
             player.release()
@@ -100,16 +150,120 @@ class PlaybackService : MediaLibraryService() {
         super.onDestroy()
     }
 
+    // ======================= Bildirim ❤️ butonu =======================
+
+    private fun likeButton(liked: Boolean): CommandButton =
+        CommandButton.Builder()
+            .setDisplayName(if (liked) "Favorilerden çıkar" else "Favorilere ekle")
+            .setIconResId(if (liked) R.drawable.ic_heart_filled else R.drawable.ic_heart_outline)
+            .setSessionCommand(likeCommand)
+            .build()
+
+    @kotlin.OptIn(ExperimentalCoroutinesApi::class)
+    private fun observeLikeState() = scope.launch {
+        currentId.flatMapLatest { id -> if (id == null) flowOf(false) else library.isLiked(id) }
+            .collect { liked -> session?.setCustomLayout(ImmutableList.of(likeButton(liked))) }
+    }
+
+    private fun toggleLikeCurrent() {
+        val song = player.currentMediaItem?.toSongOrNull() ?: return
+        scope.launch { library.toggleLike(song) }
+    }
+
+    // ======================= Uyku zamanlayıcısı =======================
+
+    private fun fadeOutAndPause() {
+        fadeJob?.cancel()
+        fadeJob = scope.launch {
+            val start = player.volume
+            for (i in 20 downTo 0) {
+                player.volume = start * i / 20f
+                delay(400)
+            }
+            player.pause()
+            player.volume = start
+        }
+    }
+
+    // ======================= SponsorBlock =======================
+
+    private fun loadSegments(id: String) {
+        segments = emptyList()
+        if (!sponsorEnabled) return
+        scope.launch {
+            val list = sponsorBlock.segments(id)
+            if (player.currentMediaItem?.videoId == id) {
+                val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                // Neredeyse tüm şarkıyı kaplayan işaretlemeleri yok say
+                segments = list.filter { (it.last - it.first) < duration * 0.8 }
+                startSkipLoop()
+            }
+        }
+    }
+
+    private fun startSkipLoop() {
+        skipJob?.cancel()
+        if (segments.isEmpty()) return
+        skipJob = scope.launch {
+            while (isActive) {
+                if (player.isPlaying && sponsorEnabled) {
+                    val pos = player.currentPosition
+                    segments.firstOrNull { pos >= it.first && pos < it.last - 500 }?.let { player.seekTo(it.last) }
+                }
+                delay(400)
+            }
+        }
+    }
+
+    // ======================= İstatistik =======================
+
+    private fun pauseListenClock() {
+        playingSince?.let { listenedMs += SystemClock.elapsedRealtime() - it }
+        playingSince = null
+    }
+
+    /** 30 sn veya şarkının yarısı dinlendiyse istatistiğe yaz. */
+    private fun flushListen() {
+        pauseListenClock()
+        val song = trackedSong
+        val ms = listenedMs
+        if (song != null && (ms >= 30_000 || (song.durationSec > 0 && ms >= song.durationSec * 500))) {
+            scope.launch { runCatching { library.recordPlay(song.id, ms) } }
+        }
+        listenedMs = 0
+    }
+
     // ======================= Oynatıcı olayları =======================
 
     private inner class PlayerListener : Player.Listener {
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            mediaItem?.toSongOrNull()?.let { song -> scope.launch { library.onPlayed(song) } }
+            flushListen()
+            val song = mediaItem?.toSongOrNull()
+            trackedSong = song
+            if (player.isPlaying) playingSince = SystemClock.elapsedRealtime()
+            currentId.value = song?.id
+            song?.let { s ->
+                scope.launch { library.onPlayed(s) }
+                loadSegments(s.id)
+            }
             maybeExtendRadio()
+            widget.update(song, player.isPlaying)
         }
 
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) playingSince = SystemClock.elapsedRealtime() else pauseListenClock()
+            // "Şarkı bitince dur" tetiklendiyse zamanlayıcıyı kapat
+            if (!isPlaying && sleepTimer.state.value.endOfSong && player.playbackState == Player.STATE_READY &&
+                !player.playWhenReady
+            ) sleepTimer.cancel()
+            widget.update(player.currentMediaItem?.toSongOrNull(), isPlaying)
+        }
+
+        override fun onAudioSessionIdChanged(audioSessionId: Int) = effects.attach(audioSessionId)
+
         override fun onPlayerError(error: PlaybackException) {
+            CrashLogger.log("Oynatma hatası", error)
             val id = player.currentMediaItem?.videoId ?: return
             val tries = retryCount.getOrDefault(id, 0)
             val http = generateSequence(error.cause) { it.cause }
@@ -154,6 +308,28 @@ class PlaybackService : MediaLibraryService() {
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {
 
+        /** ❤️ komutunu tüm denetleyicilere (bildirim, Auto, kilit ekranı) aç. */
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ): MediaSession.ConnectionResult {
+            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+                .buildUpon().add(likeCommand).build()
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(commands)
+                .build()
+        }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle
+        ): ListenableFuture<SessionResult> {
+            if (customCommand.customAction == CMD_LIKE) toggleLikeCurrent()
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+
         /** Kök + Android Auto ipuçları (arama desteği, liste/ızgara görünümü). */
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
@@ -165,7 +341,7 @@ class PlaybackService : MediaLibraryService() {
                 putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 1) // liste
                 putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 1)  // liste
             }
-            return com.google.common.util.concurrent.Futures.immediateFuture(
+            return Futures.immediateFuture(
                 LibraryResult.ofItem(tree.root, LibraryParams.Builder().setExtras(extras).build())
             )
         }

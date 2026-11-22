@@ -119,6 +119,19 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Ana ekran widget'ı -->
+        <receiver
+            android:name=".widget.NovayWidgetReceiver"
+            android:exported="true"
+            android:label="Novay Sound">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/novay_widget_info" />
+        </receiver>
+
         <!-- Kulaklık/araç "oynat" tuşuyla uygulama kapalıyken devam etme -->
         <receiver
             android:name="androidx.media3.session.MediaButtonReceiver"

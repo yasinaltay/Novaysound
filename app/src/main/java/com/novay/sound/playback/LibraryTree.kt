@@ -27,7 +27,8 @@ import javax.inject.Singleton
 class LibraryTree @Inject constructor(
     private val library: LibraryRepository,
     @PlaybackCache private val cache: SimpleCache,
-    private val downloads: DownloadTracker
+    private val downloads: DownloadTracker,
+    private val youtube: com.novay.sound.data.youtube.YouTubeRepository
 ) {
     companion object {
         const val ROOT = "root"
@@ -36,16 +37,31 @@ class LibraryTree @Inject constructor(
         const val PLAYLISTS = "playlists"
         const val FAVORITES = "favorites"
         const val PLAYLIST_PREFIX = "playlist:"
+        const val FOR_YOU = "foryou"
+        const val TRENDING = "trending"
     }
 
     val root: MediaItem = folder(ROOT, "Novay Sound")
 
     private val categories = listOf(
+        folder(FOR_YOU, "Senin için", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
         folder(RECENT, "Son Çalınanlar", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
         folder(OFFLINE, "Çevrimdışı", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
-        folder(PLAYLISTS, "Çalma Listeleri", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS),
-        folder(FAVORITES, "Favoriler", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+        folder(PLAYLISTS, "Çalma Listeleri", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS, gridChildren = true),
+        folder(FAVORITES, "Favoriler", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
+        folder(TRENDING, "Trendler", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
     )
+
+    @Volatile private var forYouCache: Pair<Long, List<Song>>? = null
+
+    /** Son dinlenen şarkıdan radyo (30 dk önbellek). */
+    private suspend fun forYou(): List<Song> {
+        forYouCache?.takeIf { System.currentTimeMillis() - it.first < 30 * 60_000 }?.let { return it.second }
+        val seed = library.getRecent().firstOrNull() ?: return library.getFavorites().shuffled().take(30)
+        val songs = runCatching { youtube.radio(seed.id) }.getOrDefault(emptyList()).take(40)
+        if (songs.isNotEmpty()) forYouCache = System.currentTimeMillis() to songs
+        return songs.ifEmpty { library.getRecent() }
+    }
 
     suspend fun children(parentId: String): List<MediaItem> = when (parentId) {
         ROOT -> categories
@@ -66,6 +82,8 @@ class LibraryTree @Inject constructor(
         parentId == RECENT -> library.getRecent()
         parentId == FAVORITES -> library.getFavorites()
         parentId == OFFLINE -> offlineSongs()
+        parentId == FOR_YOU -> forYou()
+        parentId == TRENDING -> runCatching { youtube.trending() }.getOrDefault(emptyList())
         parentId.startsWith(PLAYLIST_PREFIX) ->
             parentId.removePrefix(PLAYLIST_PREFIX).toLongOrNull()
                 ?.let { library.getPlaylistSongs(it) }.orEmpty()
@@ -96,7 +114,8 @@ class LibraryTree @Inject constructor(
         title: String,
         type: Int = MediaMetadata.MEDIA_TYPE_FOLDER_MIXED,
         subtitle: String? = null,
-        artwork: String? = null
+        artwork: String? = null,
+        gridChildren: Boolean = false
     ) = MediaItem.Builder()
         .setMediaId(id)
         .setMediaMetadata(
@@ -107,6 +126,11 @@ class LibraryTree @Inject constructor(
                 .setIsBrowsable(true)
                 .setIsPlayable(false)
                 .setMediaType(type)
+                .apply {
+                    if (gridChildren) setExtras(android.os.Bundle().apply {
+                        putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 2) // ızgara
+                    })
+                }
                 .build()
         )
         .build()

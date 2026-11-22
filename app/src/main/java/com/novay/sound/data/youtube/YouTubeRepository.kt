@@ -150,6 +150,27 @@ class YouTubeRepository @Inject constructor() {
             info.name to songs.take(limit)
         }
 
+    // ---------------- Trendler ----------------
+
+    @Volatile private var trendCache: Pair<Long, List<Song>>? = null
+
+    /** Türkiye müzik trendleri (1 saat önbellek); olmazsa "yeni çıkanlar" araması. */
+    suspend fun trending(): List<Song> = withContext(Dispatchers.IO) {
+        trendCache?.takeIf { System.currentTimeMillis() - it.first < 3_600_000 }?.let { return@withContext it.second }
+        val kiosk = runCatching {
+            val kl = service.kioskList
+            val id = kl.availableKiosks.firstOrNull { it.contains("music", ignoreCase = true) } ?: kl.defaultKioskId
+            val ex = kl.getExtractorById(id, null)
+            ex.fetchPage()
+            ex.initialPage.items.toSongs()
+        }.getOrDefault(emptyList())
+        val result = kiosk.ifEmpty {
+            runCatching { search("yeni çıkan türkçe şarkılar", SearchFilter.SONGS).songs }.getOrDefault(emptyList())
+        }
+        if (result.isNotEmpty()) trendCache = System.currentTimeMillis() to result
+        result
+    }
+
     // ---------------- Link ayrıştırma ----------------
 
     /** Metin içindeki YouTube / YouTube Music linkini bulur. */
