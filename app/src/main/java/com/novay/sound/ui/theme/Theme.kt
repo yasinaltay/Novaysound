@@ -113,6 +113,29 @@ fun NovayTheme(
     )
 }
 
+private val Poppins = androidx.compose.ui.text.font.FontFamily(
+    androidx.compose.ui.text.font.Font(com.novay.sound.R.font.poppins_bold, FontWeight.Bold)
+)
+
+/** Logo yazısı: "Novay" ana metin renginde, "Sound" marka cyan'ında (Poppins Bold, boşluksuz). */
+@Composable
+fun BrandTitle(modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier, fontSize: androidx.compose.ui.unit.TextUnit = 24.sp) {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val main = if (dark) Color.White else Color(0xFF111318)
+    val accent = if (dark) Color(0xFF5CEBFF) else Color(0xFF007C91)
+    androidx.compose.material3.Text(
+        text = androidx.compose.ui.text.buildAnnotatedString {
+            pushStyle(androidx.compose.ui.text.SpanStyle(color = main)); append("Novay"); pop()
+            pushStyle(androidx.compose.ui.text.SpanStyle(color = accent)); append("Sound"); pop()
+        },
+        fontFamily = Poppins,
+        fontWeight = FontWeight.Bold,
+        fontSize = fontSize,
+        maxLines = 1,
+        modifier = modifier
+    )
+}
+
 /**
  * "Novay Sound" yazısı: koyu temada açık (parlak) cyan→lila, açık temada koyu petrol→mor.
  * Böylece iki temada da zeminle yeterli kontrast olur.

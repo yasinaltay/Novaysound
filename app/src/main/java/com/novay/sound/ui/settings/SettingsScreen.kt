@@ -77,7 +77,7 @@ import androidx.compose.material3.rememberTimePickerState
 import com.novay.sound.di.CacheModule
 import com.novay.sound.di.DownloadCache
 import com.novay.sound.di.PlaybackCache
-import com.novay.sound.ui.theme.brandTitleStyle
+import com.novay.sound.ui.theme.BrandTitle
 import com.novay.sound.util.CrashLogger
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -283,7 +283,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Image(painterResource(R.drawable.logo_mark), null, Modifier.size(72.dp))
-            Text("Novay Sound", style = brandTitleStyle())
+            BrandTitle()
             Text("Sürüm ${BuildConfig.VERSION_NAME}", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
