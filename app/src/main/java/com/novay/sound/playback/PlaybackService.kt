@@ -67,6 +67,7 @@ class PlaybackService : MediaLibraryService() {
     @Inject lateinit var sponsorBlock: SponsorBlockRepository
     @Inject lateinit var settings: SettingsRepository
     @Inject lateinit var widget: WidgetUpdater
+    @Inject lateinit var queueStore: QueueStore
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var player: ExoPlayer
@@ -110,6 +111,7 @@ class PlaybackService : MediaLibraryService() {
             .apply { addListener(PlayerListener()) }
 
         effects.attach(player.audioSessionId)
+        restoreQueue()
         crossfader = Crossfader(this, dataSourceFactory, scope, player).also { it.start() }
 
         val openApp = packageManager.getLaunchIntentForPackage(packageName)?.let {
@@ -131,6 +133,13 @@ class PlaybackService : MediaLibraryService() {
                 crossfader.seconds = it.crossfadeSec
             }
         }
+        // Konumu çalarken 15 sn'de bir kaydet
+        scope.launch {
+            while (true) {
+                delay(15_000)
+                if (player.isPlaying) saveQueue()
+            }
+        }
         // Chromecast: oturum açılınca MediaSession'ın oynatıcısı CastPlayer olur
         cast = CastController(this, scope, youtube, player) { p -> session?.player = p }.also { it.init() }
         scope.launch { sleepTimer.fire.collect { fadeOutAndPause() } }
@@ -149,6 +158,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        saveQueue(sync = true)
         flushListen()
         crossfader.release()
         cast?.release()
@@ -160,6 +170,29 @@ class PlaybackService : MediaLibraryService() {
         }
         session = null
         super.onDestroy()
+    }
+
+    // ======================= Kaldığın yerden devam =======================
+
+    private fun restoreQueue() {
+        if (player.mediaItemCount > 0) return
+        val saved = queueStore.load() ?: return
+        player.setMediaItems(
+            saved.songs.map { it.toMediaItem() },
+            saved.index.coerceIn(0, saved.songs.lastIndex),
+            saved.positionMs.coerceAtLeast(0)
+        )
+        player.prepare()
+    }
+
+    private fun saveQueue(sync: Boolean = false) {
+        if (player.mediaItemCount == 0) return
+        val q = SavedQueue(
+            songs = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).toSongOrNull() },
+            index = player.currentMediaItemIndex,
+            positionMs = player.currentPosition
+        )
+        if (sync) queueStore.save(q) else scope.launch(Dispatchers.IO) { queueStore.save(q) }
     }
 
     // ======================= Bildirim ❤️ butonu =======================
@@ -201,7 +234,7 @@ class PlaybackService : MediaLibraryService() {
 
     private fun loadSegments(id: String) {
         segments = emptyList()
-        if (!sponsorEnabled) return
+        if (!sponsorEnabled || id.startsWith("local:")) return
         scope.launch {
             val list = sponsorBlock.segments(id)
             if (player.currentMediaItem?.videoId == id) {
@@ -262,6 +295,11 @@ class PlaybackService : MediaLibraryService() {
             }
             maybeExtendRadio()
             widget.update(song, player.isPlaying)
+            saveQueue()
+        }
+
+        override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+            if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) saveQueue()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -273,6 +311,7 @@ class PlaybackService : MediaLibraryService() {
                 !player.playWhenReady
             ) sleepTimer.cancel()
             widget.update(player.currentMediaItem?.toSongOrNull(), isPlaying)
+            if (!isPlaying) saveQueue()
         }
 
         override fun onAudioSessionIdChanged(audioSessionId: Int) = effects.attach(audioSessionId)
@@ -307,7 +346,7 @@ class PlaybackService : MediaLibraryService() {
         if (player.repeatMode != Player.REPEAT_MODE_OFF || player.mediaItemCount >= 300) return
         val remaining = player.mediaItemCount - player.currentMediaItemIndex - 1
         if (remaining > 2) return
-        val seed = player.currentMediaItem?.videoId ?: return
+        val seed = player.currentMediaItem?.videoId?.takeIf { !it.startsWith("local:") } ?: return
 
         radioJob = scope.launch {
             val existing = (0 until player.mediaItemCount)
@@ -452,6 +491,11 @@ class PlaybackService : MediaLibraryService() {
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo
         ): ListenableFuture<MediaItemsWithStartPosition> = scope.future {
+            queueStore.load()?.let { q ->
+                return@future MediaItemsWithStartPosition(
+                    q.songs.map { it.toMediaItem() }, q.index.coerceIn(0, q.songs.lastIndex), q.positionMs
+                )
+            }
             val recent = library.getRecent().take(50)
             MediaItemsWithStartPosition(recent.map { it.toMediaItem() }, 0, C.TIME_UNSET)
         }

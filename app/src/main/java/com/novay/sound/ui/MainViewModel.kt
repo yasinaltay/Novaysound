@@ -10,6 +10,8 @@ import com.novay.sound.data.repository.LibraryRepository
 import com.novay.sound.data.settings.AppSettings
 import com.novay.sound.data.settings.SettingsRepository
 import com.novay.sound.data.spotify.SpotifyImporter
+import com.novay.sound.data.smart.SmartList
+import com.novay.sound.data.smart.SmartPlaylists
 import com.novay.sound.data.spotify.SpotifyLink
 import com.novay.sound.data.youtube.YouTubeLink
 import com.novay.sound.data.youtube.YouTubeRepository
@@ -50,6 +52,7 @@ class MainViewModel @Inject constructor(
     private val lyricsRepo: LyricsRepository,
     private val updates: UpdateRepository,
     private val spotify: SpotifyImporter,
+    private val smart: SmartPlaylists,
     settingsRepo: SettingsRepository
 ) : ViewModel() {
 
@@ -113,6 +116,13 @@ class MainViewModel @Inject constructor(
         val url = song.artistUrl ?: youtube.findArtistUrl(song.artist)
         if (url == null) { msg("Sanatçı bulunamadı"); return@launch }
         openArtistUrl(url)
+    }
+
+    fun navigateTo(route: String) { _navigation.tryEmit(route) }
+
+    fun playSmart(type: SmartList) = viewModelScope.launch {
+        val songs = runCatching { smart.songs(type) }.getOrDefault(emptyList())
+        if (songs.isEmpty()) msg("${type.title} şu an boş") else player.play(songs)
     }
 
     fun openArtistUrl(url: String) { _navigation.tryEmit("artist?url=${Uri.encode(url)}") }

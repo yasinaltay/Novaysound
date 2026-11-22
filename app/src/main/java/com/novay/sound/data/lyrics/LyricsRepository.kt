@@ -1,6 +1,9 @@
 package com.novay.sound.data.lyrics
 
 import com.novay.sound.BuildConfig
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import com.novay.sound.data.model.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,7 +28,9 @@ private data class LrcResult(
     val instrumental: Boolean = false
 )
 
+@Serializable
 data class LyricLine(val timeMs: Long, val text: String)
+@Serializable
 data class Lyrics(val synced: List<LyricLine>, val plain: String?) {
     val isSynced get() = synced.isNotEmpty()
 }
@@ -33,17 +38,25 @@ data class Lyrics(val synced: List<LyricLine>, val plain: String?) {
 /** LRCLIB (ücretsiz, anahtarsız) üzerinden senkron şarkı sözleri. */
 @Singleton
 class LyricsRepository @Inject constructor(
+    @ApplicationContext context: Context,
     private val client: OkHttpClient,
     private val json: Json
 ) {
     private val cache = ConcurrentHashMap<String, Lyrics>()
     private val misses = ConcurrentHashMap.newKeySet<String>()
     private val base = "https://lrclib.net/api".toHttpUrl()
+    private val dir = File(context.filesDir, "lyrics").apply { mkdirs() }
 
+    /** Bulunan sözler diske de yazılır: bir kez açılan/indirilen şarkının sözleri internetsiz görünür. */
     suspend fun get(song: Song): Lyrics? {
         cache[song.id]?.let { return it }
-        if (song.id in misses) return null
         return withContext(Dispatchers.IO) {
+            val file = File(dir, song.id.replace(':', '_') + ".json")
+            runCatching { json.decodeFromString(Lyrics.serializer(), file.readText()) }.getOrNull()?.let {
+                cache[song.id] = it
+                return@withContext it
+            }
+            if (song.id in misses) return@withContext null
             val (artist, title) = cleanup(song)
             val result = exact(artist, title, song.durationSec)
                 ?: search("$artist $title", song.durationSec)
@@ -51,7 +64,10 @@ class LyricsRepository @Inject constructor(
             val lyrics = result?.let {
                 Lyrics(parseLrc(it.syncedLyrics.orEmpty()), it.plainLyrics?.takeIf(String::isNotBlank))
             }?.takeIf { it.isSynced || it.plain != null }
-            if (lyrics != null) cache[song.id] = lyrics else misses += song.id
+            if (lyrics != null) {
+                cache[song.id] = lyrics
+                runCatching { file.writeText(json.encodeToString(Lyrics.serializer(), lyrics)) }
+            } else misses += song.id
             lyrics
         }
     }

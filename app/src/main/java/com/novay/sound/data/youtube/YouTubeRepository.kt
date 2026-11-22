@@ -90,12 +90,13 @@ class YouTubeRepository @Inject constructor() {
     // ---------------- Ses akışı ----------------
 
     /** En yüksek kaliteli ses URL'si (önce önbellek; YouTube URL'leri ~6 saat geçerli). */
-    suspend fun resolveAudio(videoId: String): AudioSource = withContext(Dispatchers.IO) {
-        urlCache[videoId]?.takeIf { it.expiresAt > System.currentTimeMillis() + 60_000 }
+    suspend fun resolveAudio(videoId: String, low: Boolean = false): AudioSource = withContext(Dispatchers.IO) {
+        val key = "$videoId|$low"
+        urlCache[key]?.takeIf { it.expiresAt > System.currentTimeMillis() + 60_000 }
             ?.let { return@withContext it }
 
         val info = StreamInfo.getInfo(service, videoUrl(videoId))
-        val best = pickBestAudio(info.audioStreams)
+        val best = pickAudio(info.audioStreams, low)
             ?: error("Bu video için ses akışı bulunamadı")
         val source = AudioSource(
             url = best.content,
@@ -103,7 +104,7 @@ class YouTubeRepository @Inject constructor() {
             bitrate = best.averageBitrate.takeIf { it > 0 } ?: best.bitrate,
             expiresAt = parseExpire(best.content)
         )
-        urlCache[videoId] = source
+        urlCache[key] = source
         source
     }
 
@@ -118,7 +119,20 @@ class YouTubeRepository @Inject constructor() {
     }
 
     /** Süresi dolan (403) URL'yi unut, bir sonraki istekte yeniden çözülsün. */
-    fun invalidate(videoId: String) { urlCache.remove(videoId) }
+    fun invalidate(videoId: String) {
+        urlCache.remove("$videoId|false")
+        urlCache.remove("$videoId|true")
+    }
+
+    /** low=true: veri tasarrufu için ~50-70 kbps akış; aksi halde en yüksek. */
+    private fun pickAudio(streams: List<AudioStream>, low: Boolean): AudioStream? {
+        if (!low) return pickBestAudio(streams)
+        val usable = streams.filter { it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP }
+            .filter { it.audioTrackType == null || it.audioTrackType == AudioTrackType.ORIGINAL }
+            .ifEmpty { streams.filter { it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP } }
+        val rate = { s: AudioStream -> s.averageBitrate.takeIf { it > 0 } ?: s.bitrate }
+        return usable.filter { rate(it) >= 45_000 }.minByOrNull(rate) ?: usable.minByOrNull(rate)
+    }
 
     private fun pickBestAudio(streams: List<AudioStream>): AudioStream? {
         val progressive = streams.filter { it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP }

@@ -68,6 +68,7 @@ import com.novay.sound.backup.AutoBackupWorker
 import com.novay.sound.data.settings.AppSettings
 import com.novay.sound.data.settings.SettingsRepository
 import com.novay.sound.data.settings.ThemeMode
+import com.novay.sound.data.settings.AudioQuality
 import com.novay.sound.di.CacheModule
 import com.novay.sound.di.DownloadCache
 import com.novay.sound.di.PlaybackCache
@@ -96,6 +97,8 @@ class SettingsViewModel @Inject constructor(
     fun setPureBlack(on: Boolean) = viewModelScope.launch { repo.setPureBlack(on) }
     fun setArtworkColors(on: Boolean) = viewModelScope.launch { repo.setArtworkColors(on) }
     fun setSponsorBlock(on: Boolean) = viewModelScope.launch { repo.setSponsorBlock(on) }
+    fun setQuality(q: AudioQuality) = viewModelScope.launch { repo.setAudioQuality(q) }
+    fun setWifiOnly(on: Boolean) = viewModelScope.launch { repo.setWifiOnlyDownloads(on) }
     fun setCrossfade(sec: Int) = viewModelScope.launch { repo.setCrossfade(sec) }
     fun setAutoUpdate(on: Boolean) = viewModelScope.launch { repo.setAutoUpdateCheck(on) }
 
@@ -161,6 +164,25 @@ fun SettingsScreen(
 
         SettingsCard("Ses") {
             LinkRow("Ekolayzer ve ses dengeleme", if (s.eqEnabled) "Açık" else "Kapalı", onOpenEqualizer)
+            Text("Ses kalitesi", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                when (s.audioQuality) {
+                    AudioQuality.AUTO -> "Wi-Fi'da yüksek, mobil veride düşük (veri tasarrufu)"
+                    AudioQuality.HIGH -> "Her zaman en yüksek (~130-160 kbps)"
+                    AudioQuality.LOW -> "Her zaman düşük (~50-70 kbps, az veri)"
+                }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                AudioQuality.entries.forEachIndexed { i, q ->
+                    SegmentedButton(
+                        selected = s.audioQuality == q, onClick = { vm.setQuality(q) },
+                        shape = SegmentedButtonDefaults.itemShape(i, AudioQuality.entries.size),
+                        label = { Text(q.label, maxLines = 1, softWrap = false) }
+                    )
+                }
+            }
+            SwitchRow("İndirmeler sadece Wi-Fi'da", "Mobil veride indirmeler bekler", s.wifiOnlyDownloads, vm::setWifiOnly)
             Text("Şarkılar arası geçiş (crossfade)", style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.padding(top = 8.dp))
             Text(if (s.crossfadeSec == 0) "Kapalı" else "${s.crossfadeSec} saniye",

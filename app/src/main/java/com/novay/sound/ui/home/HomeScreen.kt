@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
@@ -91,6 +92,7 @@ fun HomeScreen(
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenSmart: (SmartList) -> Unit,
+    onOpenCar: () -> Unit,
     vm: HomeViewModel = hiltViewModel()
 ) {
     val recent by vm.recent.collectAsStateWithLifecycle()
@@ -108,8 +110,8 @@ fun HomeScreen(
                 Image(painterResource(R.drawable.logo_mark), null, Modifier.size(34.dp))
                 Spacer(Modifier.width(10.dp))
                 Text("Novay Sound", style = BrandTitleStyle, maxLines = 1, modifier = Modifier.weight(1f))
+                IconButton(onClick = onOpenCar) { Icon(Icons.Default.DirectionsCar, "Araç modu") }
                 CastButton()
-                IconButton(onClick = onOpenSearch) { Icon(Icons.Default.Search, "Ara") }
                 IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, "Ayarlar") }
             }
         }

@@ -13,6 +13,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -103,10 +111,40 @@ fun PlaylistScreen(
             EmptyState(Icons.AutoMirrored.Filled.QueueMusic, "Liste boş.\nŞarkı menüsünden \"Çalma listesine ekle\" ile ekleyebilirsin.")
         } else {
             val rowActions = actions.copy(remove = vm::remove)
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
-                item { PlayShuffleRow(onPlay = { actions.play(songs, 0) }, onShuffle = { actions.play(songs.shuffled(), 0) }) }
-                itemsIndexed(songs, key = { _, s -> s.id }) { i, song ->
-                    SongRow(song, song.id == currentId, rowActions, onClick = { actions.play(songs, i) })
+            // Sürükle-bırak: liste yerelde anında değişir, bırakınca veritabanına yazılır
+            var local by remember(songs) { mutableStateOf(songs) }
+            var dragFrom by remember { mutableIntStateOf(-1) }
+            val lazyState = rememberLazyListState()
+            val reorder = rememberReorderableLazyListState(lazyState) { from, to ->
+                val f = local.indexOfFirst { it.id == from.key }
+                val t = local.indexOfFirst { it.id == to.key }
+                if (f >= 0 && t >= 0) local = local.toMutableList().apply { add(t, removeAt(f)) }
+            }
+            LazyColumn(Modifier.fillMaxSize(), state = lazyState, contentPadding = PaddingValues(bottom = 16.dp)) {
+                item(key = "header") { PlayShuffleRow(onPlay = { actions.play(local, 0) }, onShuffle = { actions.play(local.shuffled(), 0) }) }
+                itemsIndexed(local, key = { _, s -> s.id }) { i, song ->
+                    ReorderableItem(reorder, key = song.id) { dragging ->
+                        Row(
+                            Modifier.background(if (dragging) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(Modifier.weight(1f)) {
+                                SongRow(song, song.id == currentId, rowActions, onClick = { actions.play(local, i) })
+                            }
+                            Icon(
+                                Icons.Default.DragHandle, "Sürükle",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(end = 12.dp).draggableHandle(
+                                    onDragStarted = { dragFrom = local.indexOfFirst { it.id == song.id } },
+                                    onDragStopped = {
+                                        val to = local.indexOfFirst { it.id == song.id }
+                                        if (dragFrom >= 0 && to >= 0 && dragFrom != to) vm.move(dragFrom, to)
+                                        dragFrom = -1
+                                    }
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="shuffle_favorites" android:enabled="true"
+        android:icon="@drawable/ic_sc_shuffle" android:shortcutShortLabel="@string/sc_shuffle">
+        <intent android:action="com.novay.sound.action.SHUFFLE_FAVORITES"
+            android:targetPackage="com.novay.sound" android:targetClass="com.novay.sound.ui.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="discover" android:enabled="true"
+        android:icon="@drawable/ic_sc_discover" android:shortcutShortLabel="@string/sc_discover">
+        <intent android:action="com.novay.sound.action.DISCOVER"
+            android:targetPackage="com.novay.sound" android:targetClass="com.novay.sound.ui.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="car" android:enabled="true"
+        android:icon="@drawable/ic_sc_car" android:shortcutShortLabel="@string/sc_car">
+        <intent android:action="com.novay.sound.action.CAR_MODE"
+            android:targetPackage="com.novay.sound" android:targetClass="com.novay.sound.ui.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="search" android:enabled="true"
+        android:icon="@drawable/ic_sc_search" android:shortcutShortLabel="@string/sc_search">
+        <intent android:action="com.novay.sound.action.SEARCH"
+            android:targetPackage="com.novay.sound" android:targetClass="com.novay.sound.ui.MainActivity" />
+    </shortcut>
+</shortcuts>

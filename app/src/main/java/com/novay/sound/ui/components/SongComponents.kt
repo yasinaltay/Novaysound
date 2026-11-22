@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.compositionLocalOf
 import com.novay.sound.download.DlState
@@ -141,18 +143,31 @@ fun SongMenu(song: Song, actions: SongActions, expanded: Boolean, onDismiss: () 
             leadingIcon = { Icon(icon, null) },
             onClick = { onDismiss(); action() }
         )
-        item("Radyoyu başlat", Icons.Default.Radio) { actions.radio(song) }
+        val context = LocalContext.current
+        if (!song.isLocal) item("Radyoyu başlat", Icons.Default.Radio) { actions.radio(song) }
         item("Sıradaki olarak çal", Icons.Default.SkipNext) { actions.playNext(song) }
         item("Sıraya ekle", Icons.AutoMirrored.Filled.QueueMusic) { actions.enqueue(song) }
         item("Favori ekle/kaldır", Icons.Default.Favorite) { actions.toggleLike(song) }
         item("Çalma listesine ekle", Icons.AutoMirrored.Filled.PlaylistAdd) { actions.addToPlaylist(song) }
-        when (LocalDownloads.current[song.id]?.state) {
+        if (!song.isLocal) when (LocalDownloads.current[song.id]?.state) {
             null, DlState.FAILED -> item("İndir", Icons.Default.Download) { actions.download(song) }
             else -> item("İndirmeyi sil", Icons.Default.DeleteOutline) { actions.removeDownload(song.id) }
         }
         item("Sanatçıya git", Icons.Default.Person) { actions.openArtist(song) }
+        if (!song.isLocal) item("Paylaş", Icons.Default.Share) { shareSong(context, song) }
         actions.remove?.let { remove -> item(actions.removeLabel, Icons.Default.Delete) { remove(song) } }
     }
+}
+
+fun shareSong(context: android.content.Context, song: Song) {
+    val text = "${song.title} – ${song.artist}\n${song.shareUrl}"
+    context.startActivity(
+        android.content.Intent.createChooser(
+            android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                .putExtra(android.content.Intent.EXTRA_TEXT, text),
+            "Şarkıyı paylaş"
+        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    )
 }
 
 @Composable

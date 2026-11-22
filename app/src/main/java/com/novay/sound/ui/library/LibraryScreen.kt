@@ -29,6 +29,10 @@ import androidx.compose.material.icons.filled.Insights
 import com.novay.sound.download.DlState
 import com.novay.sound.ui.components.LocalDownloads
 import com.novay.sound.ui.components.SectionTitle
+import com.novay.sound.data.local.LocalMusicRepository
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.remember
 import com.novay.sound.ui.smart.SmartListCards
 import com.novay.sound.data.smart.SmartList
 import androidx.compose.material.icons.filled.MoreVert
@@ -88,8 +92,13 @@ import javax.inject.Inject
 class LibraryViewModel @Inject constructor(
     private val library: LibraryRepository,
     private val tree: LibraryTree,
-    private val backup: BackupManager
+    private val backup: BackupManager,
+    val localMusic: LocalMusicRepository
 ) : ViewModel() {
+    private val _local = MutableStateFlow<List<Song>?>(null)
+    val local = _local.asStateFlow()
+    fun loadLocal() = viewModelScope.launch { _local.value = localMusic.songs() }
+
     private fun <T> Flow<List<T>>.state() = stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val favorites = library.favorites.state()
@@ -119,7 +128,7 @@ class LibraryViewModel @Inject constructor(
     }
 }
 
-private val TABS = listOf("Favoriler", "Çalma listeleri", "Geçmiş", "İndirilenler")
+private val TABS = listOf("Favoriler", "Çalma listeleri", "Geçmiş", "İndirilenler", "Cihaz")
 
 @Composable
 fun LibraryScreen(
@@ -221,6 +230,7 @@ fun LibraryScreen(
             }
             2 -> SongList(recent, currentId, actions) { EmptyState(Icons.Default.History, "Geçmiş boş") }
             3 -> DownloadsTab(offline, currentId, actions)
+            4 -> LocalTab(vm, currentId, actions)
         }
     }
 
@@ -238,6 +248,30 @@ fun LibraryScreen(
             confirmButton = { TextButton(onClick = { vm.import(Uri.parse(uri)); confirmImport = null }) { Text("Geri yükle") } },
             dismissButton = { TextButton(onClick = { confirmImport = null }) { Text("İptal") } }
         )
+    }
+}
+
+/** Telefondaki müzik dosyaları. */
+@Composable
+private fun LocalTab(vm: LibraryViewModel, currentId: String?, actions: SongActions) {
+    val songs by vm.local.collectAsStateWithLifecycle()
+    var granted by remember { mutableStateOf(vm.localMusic.hasPermission()) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        granted = ok
+        if (ok) vm.loadLocal()
+    }
+    LaunchedEffect(granted) { if (granted) vm.loadLocal() }
+
+    if (!granted) {
+        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            EmptyState(Icons.Default.PhoneAndroid, "Telefondaki MP3/FLAC dosyalarını görmek için izin gerekiyor.")
+            FilledTonalButton(onClick = { permission.launch(vm.localMusic.permission) }) { Text("İzin ver") }
+        }
+        return
+    }
+    when (val list = songs) {
+        null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        else -> SongList(list, currentId, actions) { EmptyState(Icons.Default.PhoneAndroid, "Telefonda müzik dosyası bulunamadı") }
     }
 }
 

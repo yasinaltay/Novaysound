@@ -2,4 +2,8 @@
     <string name="app_name">Novay Sound</string>
     <string name="download_channel">İndirmeler</string>
     <string name="widget_desc">Çalan şarkı ve oynatma kontrolleri</string>
+    <string name="sc_shuffle">Favorileri karıştır</string>
+    <string name="sc_discover">Haftalık keşif</string>
+    <string name="sc_car">Araç modu</string>
+    <string name="sc_search">Ara</string>
 </resources>

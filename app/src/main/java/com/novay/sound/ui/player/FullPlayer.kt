@@ -71,6 +71,8 @@ import com.novay.sound.playback.PlayerState
 import com.novay.sound.ui.MainViewModel
 import com.novay.sound.ui.components.Artwork
 import com.novay.sound.ui.components.CastButton
+import com.novay.sound.ui.components.shareSong
+import androidx.compose.material.icons.filled.Share
 import com.novay.sound.ui.components.LocalDownloads
 import com.novay.sound.ui.components.formatDuration
 import kotlinx.coroutines.delay
@@ -98,6 +100,7 @@ fun FullPlayer(
     var dragValue by remember { mutableFloatStateOf(0f) }
     var dragTotal by remember { mutableFloatStateOf(0f) }
     val bg = MaterialTheme.colorScheme.background
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Box(
         Modifier.fillMaxSize()
@@ -130,12 +133,15 @@ fun FullPlayer(
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(text = { Text("Ekolayzer") }, leadingIcon = { Icon(Icons.Default.GraphicEq, null) },
                             onClick = { menu = false; onOpenEqualizer() })
+                        if (!song.isLocal) DropdownMenuItem(text = { Text("Paylaş") }, leadingIcon = { Icon(Icons.Default.Share, null) },
+                            onClick = { menu = false; shareSong(context, song) })
                         DropdownMenuItem(text = { Text("Sanatçıya git") }, leadingIcon = { Icon(Icons.Default.Person, null) },
                             onClick = { menu = false; actions.openArtist(song) })
                         DropdownMenuItem(text = { Text("Çalma listesine ekle") },
                             leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, null) },
                             onClick = { menu = false; actions.addToPlaylist(song) })
-                        if (download == null || download.state == DlState.FAILED) {
+                        if (song.isLocal) Unit
+                        else if (download == null || download.state == DlState.FAILED) {
                             DropdownMenuItem(text = { Text("İndir") }, leadingIcon = { Icon(Icons.Default.Download, null) },
                                 onClick = { menu = false; actions.download(song) })
                         } else {

@@ -17,6 +17,10 @@
     <!-- Bluetooth kulaklık/araç bağlantı durumu (Android 12+) -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
+    <!-- Telefondaki müzik dosyaları -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
     <!-- Kalıcı indirme (ön plan servisi) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
@@ -60,6 +64,8 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Uygulama ikonuna basılı tutunca çıkan kısayollar -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
 
             <!-- Sesli komut: "Ok Google, Novay Sound'da Tarkan çal" -->
             <intent-filter>

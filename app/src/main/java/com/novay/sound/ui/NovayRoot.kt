@@ -51,6 +51,7 @@ import com.novay.sound.ui.components.AddToPlaylistDialog
 import com.novay.sound.ui.components.LocalDownloads
 import com.novay.sound.ui.artist.ArtistScreen
 import com.novay.sound.ui.smart.SmartScreen
+import com.novay.sound.ui.car.CarModeScreen
 import com.novay.sound.ui.stats.StatsScreen
 import com.novay.sound.ui.settings.EqualizerScreen
 import androidx.compose.runtime.CompositionLocalProvider
@@ -105,7 +106,7 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                 containerColor = MaterialTheme.colorScheme.background,
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
-                    Column {
+                    if (nav.currentBackStackEntryAsState().value?.destination?.route != "car") Column {
                         MiniPlayer(state, onOpen = { showPlayer = true },
                             onToggle = vm.player::togglePlay, onNext = vm.player::next)
                         BottomBar(nav)
@@ -116,7 +117,8 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                     composable("home") {
                         HomeScreen(actions, currentId, onOpenSearch = { nav.navigateTab("search") },
                             onOpenSettings = { nav.navigate("settings") },
-                            onOpenSmart = { nav.navigate("smart/${it.name}") })
+                            onOpenSmart = { nav.navigate("smart/${it.name}") },
+                            onOpenCar = { nav.navigate("car") })
                     }
                     composable("search") {
                         SearchScreen(actions, currentId, onLink = vm::handleText, onOpenArtist = vm::openArtistUrl)
@@ -134,6 +136,7 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                             onCheckUpdate = { vm.checkUpdate(manual = true) }
                         )
                     }
+                    composable("car") { CarModeScreen(vm, onClose = { nav.popBackStack() }) }
                     composable("smart/{type}", arguments = listOf(navArgument("type") { type = NavType.StringType })) {
                         SmartScreen(actions, currentId, onBack = { nav.popBackStack() })
                     }

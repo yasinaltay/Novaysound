@@ -6,6 +6,9 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.DefaultDataSource
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.cache.CacheDataSource
@@ -31,6 +34,8 @@ import javax.inject.Singleton
 @OptIn(UnstableApi::class)
 @Singleton
 class AudioDataSourceFactory @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val quality: QualityPolicy,
     @PlaybackCache private val cache: SimpleCache,
     @DownloadCache private val downloadCache: SimpleCache,
     private val okHttp: OkHttpClient,
@@ -43,9 +48,9 @@ class AudioDataSourceFactory @Inject constructor(
     private fun videoIdOf(spec: DataSpec): String =
         spec.key ?: spec.uri.lastPathSegment ?: throw IOException("Video kimliği yok: ${spec.uri}")
 
-    private fun resolve(spec: DataSpec, id: String): DataSpec {
+    private fun resolve(spec: DataSpec, id: String, low: Boolean = false): DataSpec {
         val source = try {
-            runBlocking { youtube.resolveAudio(id) }
+            runBlocking { youtube.resolveAudio(id, low) }
         } catch (e: Exception) {
             throw IOException("Ses akışı çözülemedi ($id): ${e.message}", e)
         }
@@ -69,7 +74,7 @@ class AudioDataSourceFactory @Inject constructor(
                 else -> cache.contentLength(id).let { if (it > 0) it - spec.position else -1L }
             }
             if (remaining > 0 && cache.isCached(id, spec.position, remaining)) spec.buildUpon().setKey(id).build()
-            else resolve(spec, id)
+            else resolve(spec, id, quality.preferLow())
         }
         // Salt okunur: indirme önbelleği
         val offline = CacheDataSource.Factory()
@@ -78,6 +83,7 @@ class AudioDataSourceFactory @Inject constructor(
 
         return DataSource.Factory {
             SwitchingDataSource(
+                local = DefaultDataSource.Factory(context).createDataSource(),
                 isDownloaded = { downloadCache.isFullyCached(it) },
                 offline = offline.createDataSource(),
                 online = online.createDataSource()
@@ -89,6 +95,7 @@ class AudioDataSourceFactory @Inject constructor(
 /** open() anında şarkı indirilmişse çevrimdışı, değilse çevrimiçi kaynağı kullanır. */
 @OptIn(UnstableApi::class)
 private class SwitchingDataSource(
+    private val local: DataSource,
     private val isDownloaded: (String) -> Boolean,
     private val offline: DataSource,
     private val online: DataSource
@@ -96,11 +103,17 @@ private class SwitchingDataSource(
     private var current: DataSource? = null
 
     override fun addTransferListener(transferListener: TransferListener) {
+        local.addTransferListener(transferListener)
         offline.addTransferListener(transferListener)
         online.addTransferListener(transferListener)
     }
 
     override fun open(dataSpec: DataSpec): Long {
+        // Telefondaki dosya (content://)
+        if (dataSpec.uri.scheme in setOf("content", "file", "android.resource")) {
+            current = local
+            return local.open(dataSpec)
+        }
         val id = dataSpec.key ?: dataSpec.uri.lastPathSegment
         val source = if (id != null && isDownloaded(id)) offline else online
         current = source

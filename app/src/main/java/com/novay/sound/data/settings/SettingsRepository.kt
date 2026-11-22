@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
+enum class AudioQuality(val label: String) { AUTO("Otomatik"), HIGH("Yüksek"), LOW("Düşük") }
+
 enum class ThemeMode(val label: String) { SYSTEM("Sistem"), LIGHT("Aydınlık"), DARK("Karanlık") }
 
 data class AppSettings(
@@ -25,6 +27,8 @@ data class AppSettings(
     val eqPreset: Int = -1,               // -1 = özel
     val eqBands: List<Int> = emptyList(), // millibel
     val crossfadeSec: Int = 0,            // 0 = kapalı
+    val audioQuality: AudioQuality = AudioQuality.HIGH, // AUTO: Wi-Fi yüksek, mobil veri düşük
+    val wifiOnlyDownloads: Boolean = false,
     val autoUpdateCheck: Boolean = true,
     val autoBackup: Boolean = false,
     val backupFolder: String? = null      // SAF klasör Uri'si
@@ -46,6 +50,9 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         val EQ_BANDS = stringPreferencesKey("eq_bands")
         val UPDATE_CHECK = booleanPreferencesKey("auto_update_check")
         val CROSSFADE = stringPreferencesKey("crossfade_sec")
+        val QUALITY = stringPreferencesKey("audio_quality")
+        val WIFI_DL = booleanPreferencesKey("wifi_only_downloads")
+        val HISTORY = stringPreferencesKey("search_history")
         val AUTO_BACKUP = booleanPreferencesKey("auto_backup")
         val BACKUP_FOLDER = stringPreferencesKey("backup_folder")
     }
@@ -61,6 +68,8 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             eqPreset = p[Keys.EQ_PRESET]?.toIntOrNull() ?: -1,
             eqBands = p[Keys.EQ_BANDS]?.split(',')?.mapNotNull { it.toIntOrNull() }.orEmpty(),
             crossfadeSec = p[Keys.CROSSFADE]?.toIntOrNull() ?: 0,
+            audioQuality = p[Keys.QUALITY]?.let { runCatching { AudioQuality.valueOf(it) }.getOrNull() } ?: AudioQuality.HIGH,
+            wifiOnlyDownloads = p[Keys.WIFI_DL] ?: false,
             autoUpdateCheck = p[Keys.UPDATE_CHECK] ?: true,
             autoBackup = p[Keys.AUTO_BACKUP] ?: false,
             backupFolder = p[Keys.BACKUP_FOLDER]
@@ -81,6 +90,22 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         it[Keys.EQ_PRESET] = preset.toString()
         it[Keys.EQ_BANDS] = bands.joinToString(",")
     }
+    suspend fun setAudioQuality(q: AudioQuality) = set { it[Keys.QUALITY] = q.name }
+    suspend fun setWifiOnlyDownloads(on: Boolean) = set { it[Keys.WIFI_DL] = on }
+
+    // ---- Arama geçmişi (son 15) ----
+    val searchHistory: Flow<List<String>> = context.dataStore.data.map { p ->
+        p[Keys.HISTORY]?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
+    }
+    suspend fun addSearch(q: String) = set { p ->
+        val list = p[Keys.HISTORY]?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
+        p[Keys.HISTORY] = (listOf(q.trim()) + list.filter { !it.equals(q.trim(), true) }).take(15).joinToString("\n")
+    }
+    suspend fun removeSearch(q: String) = set { p ->
+        p[Keys.HISTORY] = p[Keys.HISTORY]?.split('\n')?.filter { it != q }?.joinToString("\n").orEmpty()
+    }
+    suspend fun clearSearches() = set { it.remove(Keys.HISTORY) }
+
     suspend fun setCrossfade(sec: Int) = set { it[Keys.CROSSFADE] = sec.toString() }
     suspend fun setAutoUpdateCheck(on: Boolean) = set { it[Keys.UPDATE_CHECK] = on }
     suspend fun setAutoBackup(on: Boolean, folder: String?) = set {

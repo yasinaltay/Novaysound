@@ -15,8 +15,8 @@ android {
         applicationId = "com.novay.sound"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -111,6 +111,7 @@ dependencies {
     implementation(libs.media3.database)
     implementation(libs.media3.cast)
     implementation(libs.mediarouter)
+    implementation(libs.reorderable)
 
     // Room
     implementation(libs.room.runtime)

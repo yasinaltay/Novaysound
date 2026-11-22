@@ -52,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.novay.sound.data.model.Song
 import com.novay.sound.data.youtube.SearchFilter
+import com.novay.sound.data.settings.SettingsRepository
 import com.novay.sound.data.youtube.ArtistItem
 import com.novay.sound.ui.components.Artwork
 import com.novay.sound.ui.artist.formatCount
@@ -92,8 +93,13 @@ sealed interface SearchUi {
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class SearchViewModel @Inject constructor(
-    private val youtube: YouTubeRepository
+    private val youtube: YouTubeRepository,
+    private val settings: SettingsRepository
 ) : ViewModel() {
+
+    val history = settings.searchHistory.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    fun removeHistory(q: String) = viewModelScope.launch { settings.removeSearch(q) }
+    fun clearHistory() = viewModelScope.launch { settings.clearSearches() }
 
     val query = MutableStateFlow("")
     val filter = MutableStateFlow(SearchFilter.SONGS)
@@ -113,6 +119,7 @@ class SearchViewModel @Inject constructor(
     fun search(q: String = query.value) {
         if (q.isBlank()) return
         query.value = q
+        viewModelScope.launch { settings.addSearch(q) }
         job?.cancel()
         job = viewModelScope.launch {
             _ui.value = SearchUi.Loading
@@ -172,6 +179,7 @@ fun SearchScreen(
     val filter by vm.filter.collectAsStateWithLifecycle()
     val ui by vm.ui.collectAsStateWithLifecycle()
     val suggestions by vm.suggestions.collectAsStateWithLifecycle()
+    val history by vm.history.collectAsStateWithLifecycle()
     val keyboard = LocalSoftwareKeyboardController.current
     val clipboard = LocalClipboardManager.current
     val focus = remember { FocusRequester() }
@@ -223,12 +231,34 @@ fun SearchScreen(
 
         when (val state = ui) {
             SearchUi.Idle -> LazyColumn(Modifier.fillMaxSize()) {
+                if (query.isBlank() && history.isNotEmpty()) {
+                    item {
+                        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text("Son aramalar", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            androidx.compose.material3.TextButton(onClick = vm::clearHistory) { Text("Temizle") }
+                        }
+                    }
+                    items(history, key = { "h_$it" }) { h ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { submit(h) }.padding(start = 20.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Box(Modifier.width(16.dp))
+                            Text(h, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { vm.removeHistory(h) }) {
+                                Icon(Icons.Default.Close, "Sil", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
                 items(suggestions) { s ->
                     Row(
                         Modifier.fillMaxWidth().clickable { submit(s) }.padding(horizontal = 20.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Box(Modifier.width(16.dp))
                         Text(s, style = MaterialTheme.typography.bodyLarge)
                     }

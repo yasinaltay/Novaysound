@@ -71,6 +71,11 @@ class MainActivity : ComponentActivity() {
                 if (!vm.handleText(it)) Toast.makeText(this, "YouTube linki bulunamadı", Toast.LENGTH_SHORT).show()
             }
             Intent.ACTION_VIEW -> intent.dataString?.let { vm.handleText(it) }
+            // Uygulama kısayolları
+            "com.novay.sound.action.SHUFFLE_FAVORITES" -> vm.playFromSearch("")
+            "com.novay.sound.action.DISCOVER" -> vm.playSmart(com.novay.sound.data.smart.SmartList.DISCOVER)
+            "com.novay.sound.action.CAR_MODE" -> vm.navigateTo("car")
+            "com.novay.sound.action.SEARCH" -> vm.navigateTo("search")
             MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH ->
                 vm.playFromSearch(intent.getStringExtra(SearchManager.QUERY).orEmpty())
         }

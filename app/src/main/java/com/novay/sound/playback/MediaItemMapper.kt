@@ -17,7 +17,7 @@ private const val EXTRA_ARTIST_URL = "novay.artistUrl"
 fun Song.toMediaItem(parent: String? = null): MediaItem =
     MediaItem.Builder()
         .setMediaId(if (parent == null) id else "$parent/$id")
-        .setUri("https://youtu.be/$id")
+        .setUri(if (isLocal) "content://media/external/audio/media/${id.removePrefix("local:")}" else "https://youtu.be/$id")
         .setCustomCacheKey(id)
         .setMediaMetadata(
             MediaMetadata.Builder()

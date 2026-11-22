@@ -14,6 +14,8 @@ data class Song(
     val artistUrl: String? = null   // YouTube kanal linki (sanatçı sayfası)
 ) {
     val youtubeUrl: String get() = "https://www.youtube.com/watch?v=$id"
+    val isLocal: Boolean get() = id.startsWith("local:")
+    val shareUrl: String get() = "https://music.youtube.com/watch?v=$id"
 }
 
 fun Song.toEntity() = SongEntity(
