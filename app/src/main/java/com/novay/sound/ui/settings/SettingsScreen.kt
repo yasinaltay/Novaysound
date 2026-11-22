@@ -46,6 +46,7 @@ import com.novay.sound.R
 import com.novay.sound.data.settings.AppSettings
 import com.novay.sound.data.settings.SettingsRepository
 import com.novay.sound.data.settings.ThemeMode
+import com.novay.sound.di.PlaybackCache
 import com.novay.sound.ui.theme.BrandTitleStyle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -57,7 +58,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repo: SettingsRepository,
-    private val cache: SimpleCache
+    @PlaybackCache private val cache: SimpleCache
 ) : ViewModel() {
     val settings = repo.settings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
     val cacheBytes: Long get() = runCatching { cache.cacheSpace }.getOrDefault(0L)

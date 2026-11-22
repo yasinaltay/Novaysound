@@ -15,14 +15,14 @@ abstract class SongDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     protected abstract suspend fun insertIgnore(song: SongEntity): Long
 
-    @Query("UPDATE songs SET title = :title, artist = :artist, thumbnailUrl = :thumb, durationSec = :duration WHERE id = :id")
-    protected abstract suspend fun updateMeta(id: String, title: String, artist: String, thumb: String?, duration: Long)
+    @Query("UPDATE songs SET title = :title, artist = :artist, thumbnailUrl = :thumb, durationSec = :duration, artistUrl = COALESCE(:artistUrl, artistUrl) WHERE id = :id")
+    protected abstract suspend fun updateMeta(id: String, title: String, artist: String, thumb: String?, duration: Long, artistUrl: String?)
 
     /** Şarkıyı ekler; varsa sadece başlık/kapak günceller (favori ve geçmiş korunur). */
     @Transaction
     open suspend fun upsertMeta(song: SongEntity) {
         if (insertIgnore(song) == -1L) {
-            updateMeta(song.id, song.title, song.artist, song.thumbnailUrl, song.durationSec)
+            updateMeta(song.id, song.title, song.artist, song.thumbnailUrl, song.durationSec, song.artistUrl)
         }
     }
 

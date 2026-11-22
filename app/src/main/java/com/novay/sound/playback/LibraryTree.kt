@@ -7,6 +7,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.cache.SimpleCache
 import com.novay.sound.data.model.Song
 import com.novay.sound.data.repository.LibraryRepository
+import com.novay.sound.di.PlaybackCache
+import com.novay.sound.download.DownloadTracker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -24,7 +26,8 @@ import javax.inject.Singleton
 @Singleton
 class LibraryTree @Inject constructor(
     private val library: LibraryRepository,
-    private val cache: SimpleCache
+    @PlaybackCache private val cache: SimpleCache,
+    private val downloads: DownloadTracker
 ) {
     companion object {
         const val ROOT = "root"
@@ -74,9 +77,18 @@ class LibraryTree @Inject constructor(
         return library.getSong(mediaId.substringAfterLast('/'))?.toMediaItem()
     }
 
+    /** Önce indirilenler, sonra önbellekte tamamı olanlar. */
     private suspend fun offlineSongs(): List<Song> {
+        val downloaded = downloads.completedSongs()
         val ids = withContext(Dispatchers.IO) { cache.keys.filter { cache.isFullyCached(it) } }
-        return library.getSongs(ids)
+        val cached = library.getSongs(ids)
+        return (downloaded + cached).distinctBy { it.id }
+    }
+
+    suspend fun cachedOnlySongs(): List<Song> {
+        val ids = withContext(Dispatchers.IO) { cache.keys.filter { cache.isFullyCached(it) } }
+        val dl = downloads.completedSongs().map { it.id }.toSet()
+        return library.getSongs(ids).filter { it.id !in dl }
     }
 
     private fun folder(

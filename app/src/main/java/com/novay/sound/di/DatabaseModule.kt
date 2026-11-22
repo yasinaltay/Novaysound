@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.novay.sound.data.db.AppDatabase
 import com.novay.sound.data.db.dao.PlaylistDao
 import com.novay.sound.data.db.dao.SongDao
+import com.novay.sound.data.db.dao.StatsDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -18,8 +19,11 @@ object DatabaseModule {
 
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
-        Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME).build()
+        Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
+            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .build()
 
     @Provides fun provideSongDao(db: AppDatabase): SongDao = db.songDao()
     @Provides fun providePlaylistDao(db: AppDatabase): PlaylistDao = db.playlistDao()
+    @Provides fun provideStatsDao(db: AppDatabase): StatsDao = db.statsDao()
 }

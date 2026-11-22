@@ -15,9 +15,23 @@ android {
         applicationId = "com.novay.sound"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    // Sabit imza anahtarı: güncellemelerin eskisinin üstüne kurulabilmesi için şart.
+    // CI'da KEYSTORE_BASE64 + KEYSTORE_PASSWORD secret'ları app/release.jks'ye çözülür.
+    val releaseKeystore = rootProject.file("app/release.jks")
+    signingConfigs {
+        if (releaseKeystore.exists()) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = "novaysound"
+                keyPassword = System.getenv("KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -28,8 +42,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Kişisel kullanım: release de debug anahtarıyla imzalanır (Play Store yok)
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
         debug {
             applicationIdSuffix = ".debug"

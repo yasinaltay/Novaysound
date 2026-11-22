@@ -115,7 +115,8 @@ class YouTubeRepository @Inject constructor() {
             title = info.name,
             artist = cleanArtist(info.uploaderName),
             thumbnailUrl = bestThumb(info.thumbnails, videoId),
-            durationSec = info.duration.coerceAtLeast(0)
+            durationSec = info.duration.coerceAtLeast(0),
+            artistUrl = info.uploaderUrl
         )
     }
 
@@ -180,7 +181,8 @@ class YouTubeRepository @Inject constructor() {
             title = name,
             artist = cleanArtist(uploaderName),
             thumbnailUrl = bestThumb(thumbnails, id),
-            durationSec = duration.coerceAtLeast(0)
+            durationSec = duration.coerceAtLeast(0),
+            artistUrl = uploaderUrl
         )
     }
 

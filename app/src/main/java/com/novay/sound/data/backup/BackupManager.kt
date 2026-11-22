@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
 import com.novay.sound.data.db.AppDatabase
+import com.novay.sound.data.db.entity.PlayEventEntity
 import com.novay.sound.data.db.entity.PlaylistEntity
 import com.novay.sound.data.db.entity.PlaylistSongCrossRef
 import com.novay.sound.data.db.entity.SongEntity
@@ -22,7 +23,8 @@ data class BackupFile(
     val createdAt: Long = System.currentTimeMillis(),
     val songs: List<SongEntity>,
     val playlists: List<PlaylistEntity>,
-    val playlistSongs: List<PlaylistSongCrossRef>
+    val playlistSongs: List<PlaylistSongCrossRef>,
+    val playEvents: List<PlayEventEntity> = emptyList()
 )
 
 data class BackupSummary(val songs: Int, val playlists: Int, val favorites: Int)
@@ -42,7 +44,8 @@ class BackupManager @Inject constructor(
         val file = BackupFile(
             songs = db.songDao().getAll(),
             playlists = db.playlistDao().getAllPlaylists(),
-            playlistSongs = db.playlistDao().getAllRefs()
+            playlistSongs = db.playlistDao().getAllRefs(),
+            playEvents = db.statsDao().getAll()
         )
         context.contentResolver.openOutputStream(uri, "wt")
             ?.use { it.write(json.encodeToString(BackupFile.serializer(), file).toByteArray()) }
@@ -64,6 +67,8 @@ class BackupManager @Inject constructor(
             db.songDao().insertAll(file.songs)
             db.playlistDao().insertPlaylists(file.playlists)
             db.playlistDao().insertRefs(file.playlistSongs)
+            db.statsDao().deleteAll()
+            db.statsDao().insertAll(file.playEvents)
         }
         file.summary()
     }

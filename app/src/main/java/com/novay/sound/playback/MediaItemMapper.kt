@@ -7,6 +7,7 @@ import androidx.media3.common.MediaMetadata
 import com.novay.sound.data.model.Song
 
 private const val EXTRA_DURATION = "novay.duration"
+private const val EXTRA_ARTIST_URL = "novay.artistUrl"
 
 /**
  * Şarkı -> MediaItem. URI sadece yer tutucu; gerçek ses URL'si oynatma anında
@@ -28,7 +29,10 @@ fun Song.toMediaItem(parent: String? = null): MediaItem =
                 .setIsPlayable(true)
                 .setIsBrowsable(false)
                 .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-                .setExtras(Bundle().apply { putLong(EXTRA_DURATION, durationSec) })
+                .setExtras(Bundle().apply {
+                    putLong(EXTRA_DURATION, durationSec)
+                    putString(EXTRA_ARTIST_URL, artistUrl)
+                })
                 .build()
         )
         .build()
@@ -44,6 +48,7 @@ fun MediaItem.toSongOrNull(): Song? {
         title = title,
         artist = mediaMetadata.artist?.toString().orEmpty(),
         thumbnailUrl = mediaMetadata.artworkUri?.toString(),
-        durationSec = mediaMetadata.extras?.getLong(EXTRA_DURATION) ?: 0L
+        durationSec = mediaMetadata.extras?.getLong(EXTRA_DURATION) ?: 0L,
+        artistUrl = mediaMetadata.extras?.getString(EXTRA_ARTIST_URL)
     )
 }
