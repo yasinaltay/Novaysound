@@ -1,8 +1,8 @@
 name: APK Build
 
-# Şimdilik elle tetiklenir (Actions > APK Build > Run workflow).
-# Kotlin sınıfları eklendikten sonra push tetikleyicisi açılacak.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
