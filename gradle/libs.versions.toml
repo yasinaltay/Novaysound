@@ -20,6 +20,7 @@ coroutines = "1.10.2"
 serialization = "1.8.1"
 desugar = "2.1.5"
 glance = "1.1.1"
+mediarouter = "1.7.0"
 work = "2.10.0"
 
 [libraries]
@@ -45,6 +46,8 @@ media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", versi
 media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 media3-datasource = { group = "androidx.media3", name = "media3-datasource", version.ref = "media3" }
 media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version.ref = "media3" }
+media3-cast = { group = "androidx.media3", name = "media3-cast", version.ref = "media3" }
+mediarouter = { group = "androidx.mediarouter", name = "mediarouter", version.ref = "mediarouter" }
 media3-database = { group = "androidx.media3", name = "media3-database", version.ref = "media3" }
 
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }

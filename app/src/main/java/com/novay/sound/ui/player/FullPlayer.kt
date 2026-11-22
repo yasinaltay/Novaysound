@@ -70,6 +70,7 @@ import com.novay.sound.download.DlState
 import com.novay.sound.playback.PlayerState
 import com.novay.sound.ui.MainViewModel
 import com.novay.sound.ui.components.Artwork
+import com.novay.sound.ui.components.CastButton
 import com.novay.sound.ui.components.LocalDownloads
 import com.novay.sound.ui.components.formatDuration
 import kotlinx.coroutines.delay
@@ -123,6 +124,7 @@ fun FullPlayer(
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (sleep.active) SleepCountdown(sleep.endAt, accent)
                 }
+                CastButton()
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Menü") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {

@@ -24,6 +24,7 @@ data class AppSettings(
     val eqEnabled: Boolean = false,
     val eqPreset: Int = -1,               // -1 = özel
     val eqBands: List<Int> = emptyList(), // millibel
+    val crossfadeSec: Int = 0,            // 0 = kapalı
     val autoUpdateCheck: Boolean = true,
     val autoBackup: Boolean = false,
     val backupFolder: String? = null      // SAF klasör Uri'si
@@ -44,6 +45,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         val EQ_PRESET = stringPreferencesKey("eq_preset")
         val EQ_BANDS = stringPreferencesKey("eq_bands")
         val UPDATE_CHECK = booleanPreferencesKey("auto_update_check")
+        val CROSSFADE = stringPreferencesKey("crossfade_sec")
         val AUTO_BACKUP = booleanPreferencesKey("auto_backup")
         val BACKUP_FOLDER = stringPreferencesKey("backup_folder")
     }
@@ -58,6 +60,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             eqEnabled = p[Keys.EQ_ON] ?: false,
             eqPreset = p[Keys.EQ_PRESET]?.toIntOrNull() ?: -1,
             eqBands = p[Keys.EQ_BANDS]?.split(',')?.mapNotNull { it.toIntOrNull() }.orEmpty(),
+            crossfadeSec = p[Keys.CROSSFADE]?.toIntOrNull() ?: 0,
             autoUpdateCheck = p[Keys.UPDATE_CHECK] ?: true,
             autoBackup = p[Keys.AUTO_BACKUP] ?: false,
             backupFolder = p[Keys.BACKUP_FOLDER]
@@ -78,6 +81,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         it[Keys.EQ_PRESET] = preset.toString()
         it[Keys.EQ_BANDS] = bands.joinToString(",")
     }
+    suspend fun setCrossfade(sec: Int) = set { it[Keys.CROSSFADE] = sec.toString() }
     suspend fun setAutoUpdateCheck(on: Boolean) = set { it[Keys.UPDATE_CHECK] = on }
     suspend fun setAutoBackup(on: Boolean, folder: String?) = set {
         it[Keys.AUTO_BACKUP] = on

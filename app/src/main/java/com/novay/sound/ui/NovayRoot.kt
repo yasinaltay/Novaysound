@@ -50,6 +50,7 @@ import androidx.navigation.navArgument
 import com.novay.sound.ui.components.AddToPlaylistDialog
 import com.novay.sound.ui.components.LocalDownloads
 import com.novay.sound.ui.artist.ArtistScreen
+import com.novay.sound.ui.smart.SmartScreen
 import com.novay.sound.ui.stats.StatsScreen
 import com.novay.sound.ui.settings.EqualizerScreen
 import androidx.compose.runtime.CompositionLocalProvider
@@ -114,14 +115,16 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                 NavHost(nav, startDestination = "home", modifier = Modifier.padding(padding)) {
                     composable("home") {
                         HomeScreen(actions, currentId, onOpenSearch = { nav.navigateTab("search") },
-                            onOpenSettings = { nav.navigate("settings") })
+                            onOpenSettings = { nav.navigate("settings") },
+                            onOpenSmart = { nav.navigate("smart/${it.name}") })
                     }
                     composable("search") {
                         SearchScreen(actions, currentId, onLink = vm::handleText, onOpenArtist = vm::openArtistUrl)
                     }
                     composable("library") {
                         LibraryScreen(actions, currentId, onOpenPlaylist = { nav.navigate("playlist/$it") },
-                            onOpenStats = { nav.navigate("stats") })
+                            onOpenStats = { nav.navigate("stats") },
+                            onOpenSmart = { nav.navigate("smart/${it.name}") })
                     }
                     composable("settings") {
                         SettingsScreen(
@@ -130,6 +133,9 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                             onOpenStats = { nav.navigate("stats") },
                             onCheckUpdate = { vm.checkUpdate(manual = true) }
                         )
+                    }
+                    composable("smart/{type}", arguments = listOf(navArgument("type") { type = NavType.StringType })) {
+                        SmartScreen(actions, currentId, onBack = { nav.popBackStack() })
                     }
                     composable("equalizer") { EqualizerScreen(onBack = { nav.popBackStack() }) }
                     composable("stats") {
@@ -161,6 +167,25 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
         }
 
         BackHandler(enabled = showPlayer) { showPlayer = false }
+
+        val import by vm.import.collectAsStateWithLifecycle()
+        import?.let { p ->
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("Spotify'dan aktarılıyor") },
+                text = {
+                    Column {
+                        Text(p.name, style = MaterialTheme.typography.bodyLarge)
+                        Spacer(Modifier.height(12.dp))
+                        if (p.total > 0) {
+                            LinearProgressIndicator(progress = { p.done / p.total.toFloat() }, modifier = Modifier.fillMaxWidth())
+                            Text("${p.done} / ${p.total} şarkı YouTube'da aranıyor", style = MaterialTheme.typography.bodySmall)
+                        } else LinearProgressIndicator(Modifier.fillMaxWidth())
+                    }
+                },
+                confirmButton = {}
+            )
+        }
 
         val update by vm.update.collectAsStateWithLifecycle()
         UpdateDialog(update, onUpdate = vm::downloadUpdate, onInstall = vm::installUpdate, onDismiss = vm::dismissUpdate)

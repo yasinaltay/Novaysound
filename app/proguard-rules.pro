@@ -8,6 +8,9 @@
 -dontwarn javax.script.**
 -dontwarn jdk.dynalink.**
 
+# Chromecast seçenek sağlayıcısı (manifestten isimle yüklenir)
+-keep class com.novay.sound.playback.CastOptionsProvider { *; }
+
 # kotlinx.serialization
 -keepattributes *Annotation*, InnerClasses
 -keepclassmembers class com.novay.sound.** {

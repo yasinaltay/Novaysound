@@ -19,5 +19,8 @@ class NovayApp : Application() {
         super.onCreate() // Hilt alanları burada enjekte eder
         // NewPipe'ı bir kez başlat: Türkçe sonuçlar, Türkiye içerik bölgesi
         NewPipe.init(downloader, Localization("tr", "TR"), ContentCountry("TR"))
+        // Chromecast cihaz keşfi için (Google Play Hizmetleri yoksa sessizce atlanır)
+        @Suppress("DEPRECATION")
+        runCatching { com.google.android.gms.cast.framework.CastContext.getSharedInstance(this) }
     }
 }

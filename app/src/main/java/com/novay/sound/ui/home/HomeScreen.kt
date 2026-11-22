@@ -20,6 +20,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.res.painterResource
 import com.novay.sound.R
 import com.novay.sound.ui.theme.BrandTitleStyle
+import com.novay.sound.ui.components.CastButton
+import com.novay.sound.ui.smart.SmartListCards
+import com.novay.sound.data.smart.SmartList
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -87,6 +90,7 @@ fun HomeScreen(
     currentId: String?,
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenSmart: (SmartList) -> Unit,
     vm: HomeViewModel = hiltViewModel()
 ) {
     val recent by vm.recent.collectAsStateWithLifecycle()
@@ -103,7 +107,8 @@ fun HomeScreen(
             ) {
                 Image(painterResource(R.drawable.logo_mark), null, Modifier.size(34.dp))
                 Spacer(Modifier.width(10.dp))
-                Text("Novay Sound", style = BrandTitleStyle, modifier = Modifier.weight(1f))
+                Text("Novay Sound", style = BrandTitleStyle, maxLines = 1, modifier = Modifier.weight(1f))
+                CastButton()
                 IconButton(onClick = onOpenSearch) { Icon(Icons.Default.Search, "Ara") }
                 IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, "Ayarlar") }
             }
@@ -116,6 +121,11 @@ fun HomeScreen(
                     Button(onClick = onOpenSearch) { Text("Şarkı ara") }
                 }
             }
+        }
+
+        if (recent.isNotEmpty() || favorites.isNotEmpty()) {
+            item { SectionTitle("Senin için") }
+            item { SmartListCards(onOpenSmart) }
         }
 
         if (quick.isNotEmpty()) {

@@ -89,6 +89,8 @@ class PlaybackService : MediaLibraryService() {
     private var playingSince: Long? = null
 
     private val likeCommand = SessionCommand(CMD_LIKE, Bundle.EMPTY)
+    private lateinit var crossfader: Crossfader
+    private var cast: CastController? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -108,6 +110,7 @@ class PlaybackService : MediaLibraryService() {
             .apply { addListener(PlayerListener()) }
 
         effects.attach(player.audioSessionId)
+        crossfader = Crossfader(this, dataSourceFactory, scope, player).also { it.start() }
 
         val openApp = packageManager.getLaunchIntentForPackage(packageName)?.let {
             PendingIntent.getActivity(
@@ -122,7 +125,14 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
         observeLikeState()
-        scope.launch { settings.settings.collect { sponsorEnabled = it.sponsorBlock } }
+        scope.launch {
+            settings.settings.collect {
+                sponsorEnabled = it.sponsorBlock
+                crossfader.seconds = it.crossfadeSec
+            }
+        }
+        // Chromecast: oturum açılınca MediaSession'ın oynatıcısı CastPlayer olur
+        cast = CastController(this, scope, youtube, player) { p -> session?.player = p }.also { it.init() }
         scope.launch { sleepTimer.fire.collect { fadeOutAndPause() } }
         scope.launch {
             sleepTimer.state.collect { player.pauseAtEndOfMediaItems = it.endOfSong }
@@ -140,6 +150,8 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         flushListen()
+        crossfader.release()
+        cast?.release()
         effects.release()
         scope.cancel()
         session?.run {
@@ -166,7 +178,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun toggleLikeCurrent() {
-        val song = player.currentMediaItem?.toSongOrNull() ?: return
+        val song = (session?.player ?: player).currentMediaItem?.toSongOrNull() ?: return
         scope.launch { library.toggleLike(song) }
     }
 
@@ -238,6 +250,7 @@ class PlaybackService : MediaLibraryService() {
     private inner class PlayerListener : Player.Listener {
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) crossfader.onAutoTransition() else crossfader.cancel()
             flushListen()
             val song = mediaItem?.toSongOrNull()
             trackedSong = song
@@ -252,6 +265,8 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) crossfader.onMainPlaying()
+            else if (!crossfader.isHandoff && player.playbackState != Player.STATE_BUFFERING) crossfader.cancel()
             if (isPlaying) playingSince = SystemClock.elapsedRealtime() else pauseListenClock()
             // "Şarkı bitince dur" tetiklendiyse zamanlayıcıyı kapat
             if (!isPlaying && sleepTimer.state.value.endOfSong && player.playbackState == Player.STATE_READY &&

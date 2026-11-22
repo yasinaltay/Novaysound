@@ -37,6 +37,9 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Slider
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -93,6 +96,7 @@ class SettingsViewModel @Inject constructor(
     fun setPureBlack(on: Boolean) = viewModelScope.launch { repo.setPureBlack(on) }
     fun setArtworkColors(on: Boolean) = viewModelScope.launch { repo.setArtworkColors(on) }
     fun setSponsorBlock(on: Boolean) = viewModelScope.launch { repo.setSponsorBlock(on) }
+    fun setCrossfade(sec: Int) = viewModelScope.launch { repo.setCrossfade(sec) }
     fun setAutoUpdate(on: Boolean) = viewModelScope.launch { repo.setAutoUpdateCheck(on) }
 
     fun enableAutoBackup(folder: Uri) = viewModelScope.launch {
@@ -146,8 +150,8 @@ fun SettingsScreen(
                         selected = s.themeMode == mode,
                         onClick = { vm.setTheme(mode) },
                         shape = SegmentedButtonDefaults.itemShape(i, ThemeMode.entries.size),
-                        icon = { Icon(icons.getValue(mode), null, Modifier.size(18.dp)) },
-                        label = { Text(mode.label) }
+                        icon = { if (s.themeMode != mode) Icon(icons.getValue(mode), null, Modifier.size(18.dp)) },
+                        label = { Text(mode.label, maxLines = 1, softWrap = false) }
                     )
                 }
             }
@@ -157,6 +161,15 @@ fun SettingsScreen(
 
         SettingsCard("Ses") {
             LinkRow("Ekolayzer ve ses dengeleme", if (s.eqEnabled) "Açık" else "Kapalı", onOpenEqualizer)
+            Text("Şarkılar arası geçiş (crossfade)", style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(top = 8.dp))
+            Text(if (s.crossfadeSec == 0) "Kapalı" else "${s.crossfadeSec} saniye",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            var fade by remember(s.crossfadeSec) { mutableFloatStateOf(s.crossfadeSec.toFloat()) }
+            Slider(
+                value = fade, onValueChange = { fade = it }, valueRange = 0f..12f, steps = 11,
+                onValueChangeFinished = { vm.setCrossfade(fade.toInt()) }
+            )
             SwitchRow("SponsorBlock", "Klip videolarındaki konuşma, sponsor ve müzik dışı kısımları atla",
                 s.sponsorBlock, vm::setSponsorBlock)
         }

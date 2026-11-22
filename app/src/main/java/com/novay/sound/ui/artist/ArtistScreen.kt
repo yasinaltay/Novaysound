@@ -24,7 +24,7 @@ import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -130,16 +130,25 @@ private fun ArtistContent(artist: Artist, actions: SongActions, currentId: Strin
             }
         }
         item {
-            Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(onClick = { actions.play(all, 0) }, enabled = all.isNotEmpty(), modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Çal")
+            Row(
+                Modifier.fillMaxWidth().padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = { actions.play(all, 0) }, enabled = all.isNotEmpty(),
+                    modifier = Modifier.weight(1f).height(52.dp)
+                ) {
+                    Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Çal", maxLines = 1)
                 }
-                FilledTonalButton(onClick = { actions.play(all.shuffled(), 0) }, enabled = all.isNotEmpty(), modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Shuffle, null); Spacer(Modifier.width(6.dp)); Text("Karıştır")
-                }
-                FilledTonalButton(onClick = { all.firstOrNull()?.let(actions.radio) }, enabled = all.isNotEmpty(), modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Radio, null); Spacer(Modifier.width(6.dp)); Text("Radyo")
-                }
+                FilledTonalIconButton(
+                    onClick = { actions.play(all.shuffled(), 0) }, enabled = all.isNotEmpty(),
+                    modifier = Modifier.size(52.dp)
+                ) { Icon(Icons.Default.Shuffle, "Karıştır") }
+                FilledTonalIconButton(
+                    onClick = { all.firstOrNull()?.let(actions.radio) }, enabled = all.isNotEmpty(),
+                    modifier = Modifier.size(52.dp)
+                ) { Icon(Icons.Default.Radio, "Sanatçı radyosu") }
             }
         }
         if (artist.popular.isNotEmpty()) {

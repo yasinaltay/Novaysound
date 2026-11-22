@@ -65,6 +65,13 @@ abstract class SongDao {
     @Query("SELECT * FROM songs WHERE title LIKE '%' || :q || '%' OR artist LIKE '%' || :q || '%' ORDER BY playCount DESC LIMIT :limit")
     abstract suspend fun searchLocal(q: String, limit: Int = 30): List<SongEntity>
 
+    /** Uzun süredir çalınmayan favoriler. */
+    @Query("SELECT * FROM songs WHERE likedAt IS NOT NULL AND (lastPlayedAt IS NULL OR lastPlayedAt < :before) ORDER BY lastPlayedAt ASC LIMIT :limit")
+    abstract suspend fun forgottenFavorites(before: Long, limit: Int = 50): List<SongEntity>
+
+    @Query("SELECT id FROM songs WHERE lastPlayedAt IS NOT NULL OR likedAt IS NOT NULL")
+    abstract suspend fun knownIds(): List<String>
+
     // ---- Yedekleme ----
     @Query("SELECT * FROM songs")
     abstract suspend fun getAll(): List<SongEntity>

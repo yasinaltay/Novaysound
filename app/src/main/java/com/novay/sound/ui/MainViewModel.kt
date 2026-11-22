@@ -9,6 +9,8 @@ import com.novay.sound.data.model.Song
 import com.novay.sound.data.repository.LibraryRepository
 import com.novay.sound.data.settings.AppSettings
 import com.novay.sound.data.settings.SettingsRepository
+import com.novay.sound.data.spotify.SpotifyImporter
+import com.novay.sound.data.spotify.SpotifyLink
 import com.novay.sound.data.youtube.YouTubeLink
 import com.novay.sound.data.youtube.YouTubeRepository
 import com.novay.sound.download.DownloadTracker
@@ -29,6 +31,8 @@ import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
 
+data class ImportProgress(val name: String, val done: Int, val total: Int)
+
 sealed interface UpdateUi {
     data object None : UpdateUi
     data class Available(val info: UpdateInfo) : UpdateUi
@@ -45,6 +49,7 @@ class MainViewModel @Inject constructor(
     private val downloads: DownloadTracker,
     private val lyricsRepo: LyricsRepository,
     private val updates: UpdateRepository,
+    private val spotify: SpotifyImporter,
     settingsRepo: SettingsRepository
 ) : ViewModel() {
 
@@ -62,6 +67,9 @@ class MainViewModel @Inject constructor(
 
     /** Çalma listesine eklenmek üzere seçilen şarkı (dialog açık). */
     val playlistTarget = MutableStateFlow<Song?>(null)
+
+    private val _import = MutableStateFlow<ImportProgress?>(null)
+    val import = _import.asStateFlow()
 
     private val _update = MutableStateFlow<UpdateUi>(UpdateUi.None)
     val update = _update.asStateFlow()
@@ -146,6 +154,7 @@ class MainViewModel @Inject constructor(
 
     /** Paylaşılan / yapıştırılan metin YouTube linkiyse işle. Link değilse false. */
     fun handleText(text: String): Boolean {
+        spotify.parse(text)?.let { importSpotify(it); return true }
         val link = youtube.parseLink(text) ?: return false
         viewModelScope.launch {
             when (link) {
@@ -169,6 +178,30 @@ class MainViewModel @Inject constructor(
             }
         }
         return true
+    }
+
+    /** Spotify listesi/albümü -> YouTube'da eşleştir -> yeni çalma listesi. */
+    private fun importSpotify(link: SpotifyLink) = viewModelScope.launch {
+        if (_import.value != null) { msg("Bir aktarım zaten sürüyor"); return@launch }
+        _import.value = ImportProgress("Spotify", 0, 0)
+        try {
+            val (name, tracks) = runCatching { spotify.fetch(link) }.getOrElse {
+                msg("Spotify okunamadı: ${it.message}"); return@launch
+            }
+            if (tracks.isEmpty()) { msg("Liste boş"); return@launch }
+            _import.value = ImportProgress(name, 0, tracks.size)
+            val songs = spotify.match(tracks) { done, total -> _import.value = ImportProgress(name, done, total) }
+            if (songs.isEmpty()) { msg("Hiçbir şarkı eşleşmedi"); return@launch }
+            if (link.type == "track") player.startRadio(songs.first())
+            else {
+                val id = library.createPlaylist(name)
+                songs.forEach { library.addToPlaylist(id, it) }
+                player.play(songs)
+                msg("\"$name\": ${songs.size}/${tracks.size} şarkı bulundu ve kaydedildi")
+            }
+        } finally {
+            _import.value = null
+        }
     }
 
     /** Sesli komut (MEDIA_PLAY_FROM_SEARCH) uygulama ekranına gelirse. */

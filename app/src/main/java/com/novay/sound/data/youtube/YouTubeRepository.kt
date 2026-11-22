@@ -107,6 +107,16 @@ class YouTubeRepository @Inject constructor() {
         source
     }
 
+    /** Chromecast için: m4a (AAC) tercih edilir, her alıcıda çalar. */
+    suspend fun resolveCastAudio(videoId: String): AudioSource = withContext(Dispatchers.IO) {
+        val info = StreamInfo.getInfo(service, videoUrl(videoId))
+        val progressive = info.audioStreams.filter { it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP }
+        val m4a = progressive.filter { it.format == org.schabi.newpipe.extractor.MediaFormat.M4A }
+        val best = (m4a.ifEmpty { progressive }).maxByOrNull { it.averageBitrate.takeIf { b -> b > 0 } ?: it.bitrate }
+            ?: error("Ses akışı yok")
+        AudioSource(best.content, best.format?.mimeType ?: "audio/mp4", best.averageBitrate, parseExpire(best.content))
+    }
+
     /** Süresi dolan (403) URL'yi unut, bir sonraki istekte yeniden çözülsün. */
     fun invalidate(videoId: String) { urlCache.remove(videoId) }
 

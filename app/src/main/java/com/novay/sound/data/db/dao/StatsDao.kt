@@ -34,6 +34,13 @@ interface StatsDao {
     """)
     fun topArtists(since: Long, limit: Int = 10): Flow<List<ArtistStat>>
 
+    @Query("""
+        SELECT s.*, COUNT(e.id) AS plays, SUM(e.listenedMs) AS ms FROM play_events e
+        JOIN songs s ON s.id = e.songId WHERE e.playedAt >= :since
+        GROUP BY e.songId ORDER BY plays DESC, ms DESC LIMIT :limit
+    """)
+    suspend fun topSongsOnce(since: Long, limit: Int): List<SongStat>
+
     @Query("SELECT * FROM play_events") suspend fun getAll(): List<PlayEventEntity>
     @Insert suspend fun insertAll(events: List<PlayEventEntity>)
     @Query("DELETE FROM play_events") suspend fun deleteAll()

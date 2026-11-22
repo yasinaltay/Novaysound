@@ -44,6 +44,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -107,7 +108,7 @@ class SearchViewModel @Inject constructor(
     private var page: SearchPage? = null
     private var job: Job? = null
 
-    fun isLink(text: String) = youtube.parseLink(text) != null
+    fun isLink(text: String) = youtube.parseLink(text) != null || text.contains("open.spotify.com")
 
     fun search(q: String = query.value) {
         if (q.isBlank()) return
@@ -186,7 +187,7 @@ fun SearchScreen(
         OutlinedTextField(
             value = query,
             onValueChange = { vm.query.value = it },
-            placeholder = { Text("Şarkı, sanatçı veya YouTube linki") },
+            placeholder = { Text("Şarkı, sanatçı veya link", maxLines = 1, overflow = TextOverflow.Ellipsis) },
             leadingIcon = { Icon(Icons.Default.Search, null) },
             trailingIcon = {
                 Row {

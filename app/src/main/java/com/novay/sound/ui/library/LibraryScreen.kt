@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.Insights
 import com.novay.sound.download.DlState
 import com.novay.sound.ui.components.LocalDownloads
 import com.novay.sound.ui.components.SectionTitle
+import com.novay.sound.ui.smart.SmartListCards
+import com.novay.sound.data.smart.SmartList
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
@@ -125,6 +127,7 @@ fun LibraryScreen(
     currentId: String?,
     onOpenPlaylist: (Long) -> Unit,
     onOpenStats: () -> Unit,
+    onOpenSmart: (SmartList) -> Unit,
     vm: LibraryViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -185,6 +188,9 @@ fun LibraryScreen(
                 empty = { EmptyState(Icons.Default.FavoriteBorder, "Favori şarkın yok") }
             )
             1 -> LazyColumn(Modifier.fillMaxSize()) {
+                item { SectionTitle("Akıllı listeler") }
+                item { SmartListCards(onOpenSmart) }
+                item { SectionTitle("Listelerin") }
                 item {
                     Row(
                         Modifier.fillMaxWidth().clickable { newPlaylist = true }.padding(16.dp),
