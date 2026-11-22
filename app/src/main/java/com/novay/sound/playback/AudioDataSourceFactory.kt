@@ -84,6 +84,7 @@ class AudioDataSourceFactory @Inject constructor(
         return DataSource.Factory {
             SwitchingDataSource(
                 local = DefaultDataSource.Factory(context).createDataSource(),
+                direct = httpFactory.createDataSource(),
                 isDownloaded = { downloadCache.isFullyCached(it) },
                 offline = offline.createDataSource(),
                 online = online.createDataSource()
@@ -96,6 +97,7 @@ class AudioDataSourceFactory @Inject constructor(
 @OptIn(UnstableApi::class)
 private class SwitchingDataSource(
     private val local: DataSource,
+    private val direct: DataSource,
     private val isDownloaded: (String) -> Boolean,
     private val offline: DataSource,
     private val online: DataSource
@@ -104,6 +106,7 @@ private class SwitchingDataSource(
 
     override fun addTransferListener(transferListener: TransferListener) {
         local.addTransferListener(transferListener)
+        direct.addTransferListener(transferListener)
         offline.addTransferListener(transferListener)
         online.addTransferListener(transferListener)
     }
@@ -113,6 +116,11 @@ private class SwitchingDataSource(
         if (dataSpec.uri.scheme in setOf("content", "file", "android.resource")) {
             current = local
             return local.open(dataSpec)
+        }
+        // Radyo yayını / HLS parçaları: YouTube çözümü ve önbellek yok
+        if (dataSpec.uri.host != "youtu.be") {
+            current = direct
+            return direct.open(dataSpec)
         }
         val id = dataSpec.key ?: dataSpec.uri.lastPathSegment
         val source = if (id != null && isDownloaded(id)) offline else online

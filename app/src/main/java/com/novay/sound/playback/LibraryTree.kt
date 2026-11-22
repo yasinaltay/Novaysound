@@ -10,6 +10,8 @@ import com.novay.sound.data.repository.LibraryRepository
 import com.novay.sound.di.PlaybackCache
 import com.novay.sound.data.smart.SmartList
 import com.novay.sound.data.smart.SmartPlaylists
+import com.novay.sound.data.radio.RadioCountry
+import com.novay.sound.data.radio.RadioRepository
 import com.novay.sound.download.DownloadTracker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,7 +33,8 @@ class LibraryTree @Inject constructor(
     @PlaybackCache private val cache: SimpleCache,
     private val downloads: DownloadTracker,
     private val youtube: com.novay.sound.data.youtube.YouTubeRepository,
-    private val smart: SmartPlaylists
+    private val smart: SmartPlaylists,
+    private val radio: RadioRepository
 ) {
     companion object {
         const val ROOT = "root"
@@ -45,6 +48,9 @@ class LibraryTree @Inject constructor(
         const val TAB_DISCOVER = "tab_discover"
         const val TAB_LIBRARY = "tab_library"
         const val SMART_PREFIX = "smart:"
+        const val RADIO_TR = "radio_tr"
+        const val RADIO_DE = "radio_de"
+        const val RADIO_FAV = "radio_fav"
     }
 
     val root: MediaItem = folder(ROOT, "Novay Sound")
@@ -60,7 +66,10 @@ class LibraryTree @Inject constructor(
     private val discoverFolders = listOf(
         folder(FOR_YOU, "Senin için (radyo)"),
         folder(SMART_PREFIX + SmartList.DISCOVER.name, SmartList.DISCOVER.title),
-        folder(TRENDING, "Türkiye'de trend")
+        folder(TRENDING, "Türkiye'de trend"),
+        folder(RADIO_FAV, "Favori radyolar"),
+        folder(RADIO_TR, "Radyo: Türkiye", gridChildren = false),
+        folder(RADIO_DE, "Radyo: Almanya", gridChildren = false)
     )
 
     private val libraryFolders = listOf(
@@ -104,6 +113,9 @@ class LibraryTree @Inject constructor(
         parentId == OFFLINE -> offlineSongs()
         parentId == FOR_YOU -> forYou()
         parentId == TRENDING -> runCatching { youtube.trending() }.getOrDefault(emptyList())
+        parentId == RADIO_TR -> runCatching { radio.top(RadioCountry.TR).take(100) }.getOrDefault(emptyList())
+        parentId == RADIO_DE -> runCatching { radio.top(RadioCountry.DE).take(100) }.getOrDefault(emptyList())
+        parentId == RADIO_FAV -> radio.favorites.value
         parentId.startsWith(SMART_PREFIX) ->
             runCatching { smart.songs(SmartList.valueOf(parentId.removePrefix(SMART_PREFIX))) }.getOrDefault(emptyList())
         parentId.startsWith(PLAYLIST_PREFIX) ->

@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.res.painterResource
 import com.novay.sound.R
-import com.novay.sound.ui.theme.BrandTitleStyle
+import com.novay.sound.ui.theme.brandTitleStyle
 import com.novay.sound.ui.components.CastButton
 import com.novay.sound.ui.smart.SmartListCards
 import com.novay.sound.data.smart.SmartList
@@ -119,7 +119,7 @@ fun HomeScreen(
             ) {
                 Image(painterResource(R.drawable.logo_mark), null, Modifier.size(34.dp))
                 Spacer(Modifier.width(10.dp))
-                Text("Novay Sound", style = BrandTitleStyle, maxLines = 1, modifier = Modifier.weight(1f))
+                Text("Novay Sound", style = brandTitleStyle(), maxLines = 1, modifier = Modifier.weight(1f))
                 IconButton(onClick = onOpenCar) { Icon(Icons.Default.DirectionsCar, "Araç modu") }
                 CastButton()
                 IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, "Ayarlar") }

@@ -33,7 +33,8 @@ data class PlayerState(
     val queue: List<Song> = emptyList(),
     val currentIndex: Int = -1,
     val shuffle: Boolean = false,
-    val repeatMode: Int = Player.REPEAT_MODE_OFF
+    val repeatMode: Int = Player.REPEAT_MODE_OFF,
+    val liveTitle: String? = null   // radyoda o an çalan şarkı (yayın bilgisi)
 )
 
 /** Arayüzün PlaybackService'e MediaController ile bağlandığı tek nokta. */
@@ -86,8 +87,10 @@ class PlayerConnection @Inject constructor(
     private fun refresh() {
         val c = controller ?: return
         val queue = (0 until c.mediaItemCount).mapNotNull { c.getMediaItemAt(it).toSongOrNull() }
+        val song = c.currentMediaItem?.toSongOrNull()
         _state.value = PlayerState(
-            song = c.currentMediaItem?.toSongOrNull(),
+            song = song,
+            liveTitle = if (song?.isRadio == true) c.mediaMetadata.title?.toString()?.takeIf { it.isNotBlank() && it != song.title } else null,
             isPlaying = c.isPlaying,
             isBuffering = c.playbackState == Player.STATE_BUFFERING,
             positionMs = c.currentPosition,

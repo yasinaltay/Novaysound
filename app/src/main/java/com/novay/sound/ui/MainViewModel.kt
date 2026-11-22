@@ -12,6 +12,7 @@ import com.novay.sound.data.settings.SettingsRepository
 import com.novay.sound.data.spotify.SpotifyImporter
 import com.novay.sound.data.smart.SmartList
 import com.novay.sound.data.smart.Mood
+import com.novay.sound.data.radio.RadioRepository
 import com.novay.sound.data.smart.SmartPlaylists
 import com.novay.sound.data.spotify.SpotifyLink
 import com.novay.sound.data.youtube.YouTubeLink
@@ -54,6 +55,7 @@ class MainViewModel @Inject constructor(
     private val updates: UpdateRepository,
     private val spotify: SpotifyImporter,
     private val smart: SmartPlaylists,
+    private val radio: RadioRepository,
     settingsRepo: SettingsRepository
 ) : ViewModel() {
 
@@ -125,6 +127,9 @@ class MainViewModel @Inject constructor(
         val songs = runCatching { youtube.search(mood.query).songs }.getOrDefault(emptyList())
         if (songs.isEmpty()) msg("Liste yüklenemedi") else player.play(songs.shuffled())
     }
+
+    val radioFavorites = radio.favorites
+    fun toggleRadioFavorite(station: Song) = radio.toggleFavorite(station)
 
     fun navigateTo(route: String) { _navigation.tryEmit(route) }
 

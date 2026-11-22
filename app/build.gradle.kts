@@ -15,8 +15,8 @@ android {
         applicationId = "com.novay.sound"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.6.0"
+        versionCode = 7
+        versionName = "0.7.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -110,6 +110,7 @@ dependencies {
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.media3.database)
     implementation(libs.media3.cast)
+    implementation(libs.media3.hls)
     implementation(libs.mediarouter)
     implementation(libs.reorderable)
 

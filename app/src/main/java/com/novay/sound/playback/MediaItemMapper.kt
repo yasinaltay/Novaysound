@@ -9,6 +9,7 @@ import com.novay.sound.data.model.Song
 private const val EXTRA_DURATION = "novay.duration"
 private const val EXTRA_ARTIST_URL = "novay.artistUrl"
 private const val EXTRA_ARTIST = "novay.artist"
+private const val EXTRA_STREAM = "novay.stream"
 
 /**
  * Şarkı -> MediaItem. URI sadece yer tutucu; gerçek ses URL'si oynatma anında
@@ -18,7 +19,14 @@ private const val EXTRA_ARTIST = "novay.artist"
 fun Song.toMediaItem(parent: String? = null): MediaItem =
     MediaItem.Builder()
         .setMediaId(if (parent == null) id else "$parent/$id")
-        .setUri(if (isLocal) "content://media/external/audio/media/${id.removePrefix("local:")}" else "https://youtu.be/$id")
+        .setUri(
+            when {
+                isRadio -> streamUrl.orEmpty()
+                isLocal -> "content://media/external/audio/media/${id.removePrefix("local:")}"
+                else -> "https://youtu.be/$id"
+            }
+        )
+        .apply { if (isRadio && streamUrl?.contains("m3u8", ignoreCase = true) == true) setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8) }
         .setCustomCacheKey(id)
         .setMediaMetadata(
             MediaMetadata.Builder()
@@ -29,11 +37,12 @@ fun Song.toMediaItem(parent: String? = null): MediaItem =
                 .setArtworkUri(thumbnailUrl?.let(Uri::parse))
                 .setIsPlayable(true)
                 .setIsBrowsable(false)
-                .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                .setMediaType(if (isRadio) MediaMetadata.MEDIA_TYPE_RADIO_STATION else MediaMetadata.MEDIA_TYPE_MUSIC)
                 .setExtras(Bundle().apply {
                     putLong(EXTRA_DURATION, durationSec)
                     putString(EXTRA_ARTIST_URL, artistUrl)
                     putString(EXTRA_ARTIST, artist)
+                    putString(EXTRA_STREAM, streamUrl)
                 })
                 .build()
         )
@@ -51,6 +60,7 @@ fun MediaItem.toSongOrNull(): Song? {
         artist = mediaMetadata.extras?.getString(EXTRA_ARTIST) ?: mediaMetadata.artist?.toString().orEmpty(),
         thumbnailUrl = mediaMetadata.artworkUri?.toString(),
         durationSec = mediaMetadata.extras?.getLong(EXTRA_DURATION) ?: 0L,
-        artistUrl = mediaMetadata.extras?.getString(EXTRA_ARTIST_URL)
+        artistUrl = mediaMetadata.extras?.getString(EXTRA_ARTIST_URL),
+        streamUrl = mediaMetadata.extras?.getString(EXTRA_STREAM)
     )
 }

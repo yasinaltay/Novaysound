@@ -18,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Radio
+import com.novay.sound.ui.radio.RadioScreen
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -77,6 +79,7 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 private val TABS = listOf(
     Tab("home", "Ana sayfa", Icons.Default.Home),
     Tab("search", "Ara", Icons.Default.Search),
+    Tab("radio", "Radyo", Icons.Default.Radio),
     Tab("library", "Kitaplık", Icons.Default.LibraryMusic)
 )
 
@@ -124,6 +127,7 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                     composable("search") {
                         SearchScreen(actions, currentId, onLink = vm::handleText, onOpenArtist = vm::openArtistUrl)
                     }
+                    composable("radio") { RadioScreen(currentId, onPlay = actions.play) }
                     composable("library") {
                         LibraryScreen(actions, currentId, onOpenPlaylist = { nav.navigate("playlist/$it") },
                             onOpenStats = { nav.navigate("stats") },

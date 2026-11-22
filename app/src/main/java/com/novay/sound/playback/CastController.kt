@@ -56,6 +56,7 @@ class CastController(
             val window = items.drop(index).take(30)
             val resolved = window.map { item ->
                 async {
+                    if (item.videoId.startsWith("radio:")) return@async item // radyo yayını doğrudan
                     runCatching {
                         val src = youtube.resolveCastAudio(item.videoId)
                         item.buildUpon().setUri(src.url).setMimeType(src.mimeType).build()

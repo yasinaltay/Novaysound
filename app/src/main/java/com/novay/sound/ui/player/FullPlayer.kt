@@ -91,6 +91,7 @@ fun FullPlayer(
     val actions = vm.actions
     val sleep by vm.sleepTimer.state.collectAsStateWithLifecycle()
     val download = LocalDownloads.current[song.id]
+    val radioFavs by vm.radioFavorites.collectAsStateWithLifecycle()
 
     var showQueue by rememberSaveable { mutableStateOf(false) }
     var showSleep by rememberSaveable { mutableStateOf(false) }
@@ -133,14 +134,14 @@ fun FullPlayer(
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(text = { Text("Ekolayzer") }, leadingIcon = { Icon(Icons.Default.GraphicEq, null) },
                             onClick = { menu = false; onOpenEqualizer() })
-                        if (!song.isLocal) DropdownMenuItem(text = { Text("Paylaş") }, leadingIcon = { Icon(Icons.Default.Share, null) },
+                        if (!song.isLocal && !song.isRadio) DropdownMenuItem(text = { Text("Paylaş") }, leadingIcon = { Icon(Icons.Default.Share, null) },
                             onClick = { menu = false; shareSong(context, song) })
-                        DropdownMenuItem(text = { Text("Sanatçıya git") }, leadingIcon = { Icon(Icons.Default.Person, null) },
+                        if (!song.isRadio) DropdownMenuItem(text = { Text("Sanatçıya git") }, leadingIcon = { Icon(Icons.Default.Person, null) },
                             onClick = { menu = false; actions.openArtist(song) })
-                        DropdownMenuItem(text = { Text("Çalma listesine ekle") },
+                        if (!song.isRadio) DropdownMenuItem(text = { Text("Çalma listesine ekle") },
                             leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, null) },
                             onClick = { menu = false; actions.addToPlaylist(song) })
-                        if (song.isLocal) Unit
+                        if (song.isLocal || song.isRadio) Unit
                         else if (download == null || download.state == DlState.FAILED) {
                             DropdownMenuItem(text = { Text("İndir") }, leadingIcon = { Icon(Icons.Default.Download, null) },
                                 onClick = { menu = false; actions.download(song) })
@@ -153,7 +154,7 @@ fun FullPlayer(
             }
 
             // ---- Kapak veya sözler ----
-            AnimatedContent(showLyrics, label = "lyrics", modifier = Modifier.weight(1f).fillMaxWidth()) { lyricsMode ->
+            AnimatedContent(showLyrics && !song.isRadio, label = "lyrics", modifier = Modifier.weight(1f).fillMaxWidth()) { lyricsMode ->
                 if (lyricsMode) {
                     LyricsPane(song, state.positionMs, vm::lyrics, onSeek = player::seekTo, modifier = Modifier.fillMaxSize())
                 } else {
@@ -175,21 +176,30 @@ fun FullPlayer(
                 Column(Modifier.weight(1f)) {
                     Text(song.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
                         maxLines = 1, modifier = Modifier.basicMarquee())
-                    Text(song.artist, style = MaterialTheme.typography.titleMedium,
+                    Text(state.liveTitle?.let { "♪ $it" } ?: song.artist, style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
-                        modifier = Modifier.basicMarquee().clickable { actions.openArtist(song) })
+                        modifier = Modifier.basicMarquee().clickable(enabled = !song.isRadio) { actions.openArtist(song) })
                 }
-                IconButton(onClick = { actions.toggleLike(song) }) {
+                val liked = if (song.isRadio) radioFavs.any { it.id == song.id } else isLiked
+                IconButton(onClick = { if (song.isRadio) vm.toggleRadioFavorite(song) else actions.toggleLike(song) }) {
                     Icon(
-                        if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        "Favori", tint = if (isLiked) accent else MaterialTheme.colorScheme.onSurface
+                        if (liked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        "Favori", tint = if (liked) accent else MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
 
             Spacer(Modifier.height(8.dp))
 
-            // ---- İlerleme ----
+            // ---- İlerleme (radyoda canlı göstergesi) ----
+            if (song.isRadio) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(10.dp).background(Color(0xFFE53935), androidx.compose.foundation.shape.CircleShape))
+                    Spacer(Modifier.size(8.dp))
+                    Text("CANLI YAYIN", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else Column {
             val duration = state.durationMs.coerceAtLeast(1L)
             val position = if (dragging) dragValue else state.positionMs.toFloat() / duration
             Slider(
@@ -204,6 +214,7 @@ fun FullPlayer(
                 Spacer(Modifier.weight(1f))
                 Text(formatDuration(state.durationMs),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             }
 
             Spacer(Modifier.height(8.dp))
@@ -243,7 +254,7 @@ fun FullPlayer(
 
             // ---- Alt eylemler: sözler, uyku, sıra ----
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                IconButton(onClick = { showLyrics = !showLyrics }) {
+                if (!song.isRadio) IconButton(onClick = { showLyrics = !showLyrics }) {
                     Icon(Icons.Default.Lyrics, "Sözler", tint = if (showLyrics) accent else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = { showSleep = true }) {

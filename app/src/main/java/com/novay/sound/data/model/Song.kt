@@ -11,8 +11,10 @@ data class Song(
     val artist: String,
     val thumbnailUrl: String?,
     val durationSec: Long,
-    val artistUrl: String? = null   // YouTube kanal linki (sanatçı sayfası)
+    val artistUrl: String? = null,  // YouTube kanal linki (sanatçı sayfası)
+    val streamUrl: String? = null   // radyo istasyonu yayın adresi
 ) {
+    val isRadio: Boolean get() = id.startsWith("radio:")
     val youtubeUrl: String get() = "https://www.youtube.com/watch?v=$id"
     val isLocal: Boolean get() = id.startsWith("local:")
     val shareUrl: String get() = "https://music.youtube.com/watch?v=$id"

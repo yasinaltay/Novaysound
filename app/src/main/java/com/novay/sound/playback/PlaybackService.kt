@@ -78,6 +78,7 @@ class PlaybackService : MediaLibraryService() {
     @Inject lateinit var flags: FeatureFlags
     @Inject lateinit var lyricsRepo: LyricsRepository
     @Inject lateinit var smart: SmartPlaylists
+    @Inject lateinit var radio: com.novay.sound.data.radio.RadioRepository
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var player: ExoPlayer
@@ -267,6 +268,7 @@ class PlaybackService : MediaLibraryService() {
 
     private fun toggleLikeCurrent() {
         val song = (session?.player ?: player).currentMediaItem?.toSongOrNull() ?: return
+        if (song.isRadio) { radio.toggleFavorite(song); return }
         scope.launch { library.toggleLike(song) }
     }
 
@@ -375,7 +377,7 @@ class PlaybackService : MediaLibraryService() {
         pauseListenClock()
         val song = trackedSong
         val ms = listenedMs
-        if (song != null && flags.on(Toggle.RECORD_STATS) && (ms >= 30_000 || (song.durationSec > 0 && ms >= song.durationSec * 500))) {
+        if (song != null && !song.isRadio && flags.on(Toggle.RECORD_STATS) && (ms >= 30_000 || (song.durationSec > 0 && ms >= song.durationSec * 500))) {
             scope.launch { runCatching { library.recordPlay(song.id, ms) } }
         }
         listenedMs = 0
@@ -395,7 +397,7 @@ class PlaybackService : MediaLibraryService() {
             trackedSong = song
             if (player.isPlaying) playingSince = SystemClock.elapsedRealtime()
             currentId.value = song?.id
-            song?.let { s ->
+            song?.takeIf { !it.isRadio }?.let { s ->
                 scope.launch { library.onPlayed(s) }
                 loadSegments(s.id)
                 startLockLyrics(s)
@@ -460,7 +462,7 @@ class PlaybackService : MediaLibraryService() {
         if (player.repeatMode != Player.REPEAT_MODE_OFF || player.mediaItemCount >= 300) return
         val remaining = player.mediaItemCount - player.currentMediaItemIndex - 1
         if (remaining > 2) return
-        val seed = player.currentMediaItem?.videoId?.takeIf { !it.startsWith("local:") } ?: return
+        val seed = player.currentMediaItem?.videoId?.takeIf { !it.startsWith("local:") && !it.startsWith("radio:") } ?: return
 
         radioJob = scope.launch {
             val existing = (0 until player.mediaItemCount)

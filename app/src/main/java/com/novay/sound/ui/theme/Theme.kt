@@ -113,8 +113,21 @@ fun NovayTheme(
     )
 }
 
-/** Logo yazısı için gradyanlı stil. */
-val BrandTitleStyle = TextStyle(brush = BrandGradient, fontWeight = FontWeight.Black, fontSize = 26.sp, letterSpacing = (-0.5).sp)
+/**
+ * "Novay Sound" yazısı: koyu temada açık (parlak) cyan→lila, açık temada koyu petrol→mor.
+ * Böylece iki temada da zeminle yeterli kontrast olur.
+ */
+@Composable
+fun brandTitleStyle(): TextStyle {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val colors = if (dark) listOf(Color(0xFF6FF3FF), Color(0xFFB9A4FF)) else listOf(Color(0xFF00788C), Color(0xFF4B2BC8))
+    return TextStyle(
+        brush = Brush.linearGradient(colors),
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 24.sp,
+        letterSpacing = (-0.3).sp
+    )
+}
 
 /** Kapak görselinden vurgu rengi (temaya uyarlanmış, yumuşak geçişli). */
 @Composable
