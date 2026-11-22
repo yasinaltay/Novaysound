@@ -229,11 +229,19 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
-    /** Uygulama son kullanılanlardan kaydırılınca: çalıyorsa devam, değilse kapat. */
+    /**
+     * Uygulama son kullanılanlardan kaydırılınca: varsayılan olarak müzik durur ve servis kapanır.
+     * "Uygulama kapatılınca çalmaya devam et" açıksa ve çalıyorsa devam eder.
+     */
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (!player.playWhenReady || player.mediaItemCount == 0 ||
-            player.playbackState == Player.STATE_ENDED
-        ) stopSelf()
+        val keep = flags.on(Toggle.KEEP_PLAYING) && player.playWhenReady && player.mediaItemCount > 0 &&
+            player.playbackState != Player.STATE_ENDED
+        if (keep) return
+        saveQueue(sync = true)
+        session?.player?.pause()
+        player.pause()
+        player.stop()
+        stopSelf()
     }
 
     override fun onDestroy() {

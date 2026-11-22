@@ -199,7 +199,7 @@ fun SettingsScreen(
 
         SettingsCard("Özellikler") {
             listOf(
-                Toggle.AUTO_RADIO, Toggle.CLEAN_TITLES, Toggle.DEDUPE, Toggle.SHOW_SMART, Toggle.SHOW_MOODS,
+                Toggle.KEEP_PLAYING, Toggle.AUTO_RADIO, Toggle.CLEAN_TITLES, Toggle.DEDUPE, Toggle.SHOW_SMART, Toggle.SHOW_MOODS,
                 Toggle.SHOW_QUICK, Toggle.SHOW_TRENDING, Toggle.RECORD_STATS, Toggle.SEARCH_HISTORY, Toggle.LYRICS_TRANSLATE, Toggle.LEARN_MODE, Toggle.BLUR_BG, Toggle.LOCK_LYRICS
             ).forEach { t -> SwitchRow(t.title, t.subtitle, s.on(t)) { vm.setToggle(t, it) } }
         }

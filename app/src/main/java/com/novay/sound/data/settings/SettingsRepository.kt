@@ -16,6 +16,7 @@ import javax.inject.Singleton
 
 /** Ayarlardan açılıp kapatılabilen özellikler. */
 enum class Toggle(val key: String, val default: Boolean, val title: String, val subtitle: String) {
+    KEEP_PLAYING("f_keep_playing", false, "Uygulama kapatılınca çalmaya devam et", "Kapalıysa son kullanılanlardan kaydırınca müzik durur"),
     AUTO_RADIO("f_auto_radio", true, "Sonsuz radyo", "Sıra bitince benzer şarkıları otomatik ekle"),
     CLEAN_TITLES("f_clean_titles", true, "Başlık temizleme", "\"(Official Video)\" gibi ekleri sil, sanatçıyı ayır"),
     DEDUPE("f_dedupe", true, "Kopyaları gizle", "Aynı şarkının klip/lyric/audio sürümlerini aramada tek göster"),
