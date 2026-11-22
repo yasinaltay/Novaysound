@@ -65,3 +65,16 @@ class RadioRankTest {
         assertEquals(0, com.novay.sound.data.radio.RadioCountry.DE.popularRank("1LIVE"))
     }
 }
+
+class QuickPickFilterTest {
+    private fun junk(t: String) = com.novay.sound.data.smart.PlaylistGenerator.isJunkTitle(t)
+
+    @Test fun sarkiOlmayanlarElenir() {
+        listOf("Türkçe Pop Mix 2026", "Blok3 - Git (Slowed + Reverb)", "1 Saat Arabesk", "Tarkan Full Album",
+            "Kuzu Kuzu Karaoke", "Git (Sped Up)", "Yağmur Sesi 10 Hours").forEach { assertTrue(it, junk(it)) }
+    }
+
+    @Test fun normalSarkilarKalir() {
+        listOf("Git", "Kayıp Kalp", "Kuzu Kuzu", "Gel Gör Beni Aşk Neyledi", "Bir Derdim Var").forEach { assertFalse(it, junk(it)) }
+    }
+}
