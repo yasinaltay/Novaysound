@@ -45,7 +45,8 @@ class AudioEffects @Inject constructor(private val settings: SettingsRepository)
         release()
         if (sessionId == 0) return
         equalizer = runCatching { Equalizer(0, sessionId) }.onFailure { CrashLogger.log("Ekolayzer açılamadı", it) }.getOrNull()
-        equalizer?.let { eq ->
+        equalizer?.runCatching {
+            val eq = this
             val bands = eq.numberOfBands.toInt()
             val range = eq.bandLevelRange
             val presetNames = (0 until eq.numberOfPresets).map { eq.getPresetName(it.toShort()) }
@@ -60,7 +61,7 @@ class AudioEffects @Inject constructor(private val settings: SettingsRepository)
                 minLevel = range[0].toInt(), maxLevel = range[1].toInt(),
                 presets = presetNames, presetLevels = presetLevels
             )
-        }
+        }?.onFailure { CrashLogger.log("Ekolayzer bilgisi okunamadı", it); _info.value = null }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             dynamics = runCatching {
                 val config = DynamicsProcessing.Config.Builder(

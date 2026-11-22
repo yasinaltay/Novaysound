@@ -89,6 +89,7 @@ class PlaybackService : MediaLibraryService() {
     private var replacingForLyrics = false
     private var autoSleepNight: String? = null
     private var alarmPending = false
+    private var restoring = false
     private var skipJob: Job? = null
     private var fadeJob: Job? = null
     private val retryCount = mutableMapOf<String, Int>()
@@ -125,9 +126,8 @@ class PlaybackService : MediaLibraryService() {
             .build()
             .apply { addListener(PlayerListener()) }
 
-        effects.attach(player.audioSessionId)
-        restoreQueue()
         crossfader = Crossfader(this, dataSourceFactory, scope, player).also { it.start() }
+        effects.attach(player.audioSessionId)
 
         val openApp = packageManager.getLaunchIntentForPackage(packageName)?.let {
             PendingIntent.getActivity(
@@ -158,6 +158,9 @@ class PlaybackService : MediaLibraryService() {
         }
         // Chromecast: oturum açılınca MediaSession'ın oynatıcısı CastPlayer olur
         cast = CastController(this, scope, youtube, player) { p -> session?.player = p }.also { it.init() }
+
+        // Kaldığın yerden devam: her şey hazır olduktan sonra (aksi halde açılışta çökme)
+        restoreQueue()
         scope.launch { sleepTimer.fire.collect { fadeOutAndPause() } }
         scope.launch {
             sleepTimer.state.collect { player.pauseAtEndOfMediaItems = it.endOfSong }
@@ -233,12 +236,19 @@ class PlaybackService : MediaLibraryService() {
     private fun restoreQueue() {
         if (player.mediaItemCount > 0) return
         val saved = queueStore.load() ?: return
-        player.setMediaItems(
-            saved.songs.map { it.toMediaItem() },
-            saved.index.coerceIn(0, saved.songs.lastIndex),
-            saved.positionMs.coerceAtLeast(0)
-        )
-        player.prepare()
+        restoring = true
+        runCatching {
+            player.setMediaItems(
+                saved.songs.map { it.toMediaItem() },
+                saved.index.coerceIn(0, saved.songs.lastIndex),
+                saved.positionMs.coerceAtLeast(0)
+            )
+            player.prepare()
+        }.onFailure {
+            CrashLogger.log("Sıra geri yüklenemedi", it)
+            queueStore.clear()
+        }
+        restoring = false
     }
 
     private fun saveQueue(sync: Boolean = false) {
@@ -391,6 +401,13 @@ class PlaybackService : MediaLibraryService() {
             // Kilit ekranı sözleri için yapılan meta güncellemesi: şarkı değişmedi
             if (replacingForLyrics || (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED &&
                     mediaItem != null && mediaItem.videoId == currentId.value)) return
+            // Açılışta kayıtlı sıranın geri yüklenmesi "dinleme" sayılmaz
+            if (restoring) {
+                trackedSong = mediaItem?.toSongOrNull()
+                currentId.value = trackedSong?.id
+                widget.update(trackedSong, false)
+                return
+            }
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) crossfader.onAutoTransition() else crossfader.cancel()
             flushListen()
             val song = mediaItem?.toSongOrNull()
@@ -408,7 +425,7 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
-            if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) saveQueue()
+            if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED && !replacingForLyrics && !restoring) saveQueue()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {

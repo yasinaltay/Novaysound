@@ -29,6 +29,8 @@ class QueueStore @Inject constructor(
         }
     }
 
+    fun clear() { runCatching { file.delete() } }
+
     fun load(): SavedQueue? = runCatching {
         json.decodeFromString(SavedQueue.serializer(), file.readText())
     }.getOrNull()?.takeIf { it.songs.isNotEmpty() }
