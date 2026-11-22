@@ -29,11 +29,34 @@ private data class RbStation(
     val tags: String = "",
     val codec: String = "",
     val bitrate: Int = 0,
-    val lastcheckok: Int = 1
+    val lastcheckok: Int = 1,
+    val clickcount: Int = 0,
+    val votes: Int = 0
 )
 
-enum class RadioCountry(val code: String, val label: String, val flag: String) {
-    TR("TR", "Türkiye", "🇹🇷"), DE("DE", "Almanya", "🇩🇪")
+enum class RadioCountry(val code: String, val label: String, val flag: String, val popular: List<String>) {
+    // Herkesin bildiği büyük istasyonlar (sıra = öncelik). İsimler sadeleştirilmiş halde aranır.
+    TR("TR", "Türkiye", "🇹🇷", listOf(
+        "kralfm", "powerturk", "superfm", "joyturk", "fenomen", "kralpop", "powerfm", "metrofm",
+        "number1", "virgin", "bestfm", "slowturk", "joyfm", "radyod", "alemfm", "trtfm",
+        "trtturku", "radyo45lik", "radyoseymen", "palstation", "kralturku", "radyoviva"
+    )),
+    DE("DE", "Almanya", "🇩🇪", listOf(
+        "1live", "swr3", "bayern3", "antennebayern", "ndr2", "wdr2", "bigfm", "energy",
+        "radiohamburg", "hr3", "ffh", "ffn", "deutschlandfunk", "rockantenne", "radiobob",
+        "sunshinelive", "metropolfm", "jamfm", "njoy", "fritz", "swr1", "bayern1"
+    ))
+}
+
+/** "Süper FM" -> "superfm": Türkçe harfler sadeleşir, boşluk/işaret silinir. */
+fun radioKey(name: String): String = name.lowercase(java.util.Locale.forLanguageTag("tr"))
+    .map { when (it) { 'ç' -> 'c'; 'ğ' -> 'g'; 'ı' -> 'i'; 'ö' -> 'o'; 'ş' -> 's'; 'ü' -> 'u'; else -> it } }
+    .filter { it.isLetterOrDigit() }.joinToString("")
+
+/** Popüler listedeki sırası (yoksa -1). */
+fun RadioCountry.popularRank(name: String): Int {
+    val key = radioKey(name)
+    return popular.indexOfFirst { key.contains(it) }
 }
 
 /** Radio Browser (radio-browser.info): ücretsiz, anahtarsız, topluluk tarafından güncellenen istasyon listesi. */
@@ -83,9 +106,15 @@ class RadioRepository @Inject constructor(
             }
             result.onFailure { lastError = it }
             val stations = result.getOrNull() ?: continue
+            // Sıralama: önce bilinen popüler istasyonlar (listedeki sırayla), sonra tıklanma + oy puanı
+            val score = { st: RbStation -> st.clickcount * 3L + st.votes }
             val songs = stations
                 .filter { it.lastcheckok == 1 && (it.url_resolved.ifBlank { it.url }).startsWith("http") }
-                .distinctBy { it.name.trim().lowercase() }
+                .sortedByDescending(score)
+                .distinctBy { radioKey(it.name) }   // aynı istasyonun kopyalarından en çok dinleneni kalır
+                .sortedWith(compareBy<RbStation> { st ->
+                    country.popularRank(st.name).let { if (it < 0) Int.MAX_VALUE else it }
+                }.thenByDescending(score))
                 .map { it.toSong(country) }
             cache[key] = System.currentTimeMillis() to songs
             return@withContext songs

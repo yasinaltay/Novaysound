@@ -56,6 +56,7 @@ import androidx.lifecycle.viewModelScope
 import com.novay.sound.data.model.Song
 import com.novay.sound.data.radio.RadioCountry
 import com.novay.sound.data.radio.RadioRepository
+import com.novay.sound.data.radio.popularRank
 import com.novay.sound.ui.components.Artwork
 import com.novay.sound.ui.components.EmptyState
 import com.novay.sound.ui.components.SectionTitle
@@ -179,7 +180,7 @@ fun RadioScreen(
             }
         }
 
-        item { SectionTitle(if (query.isBlank()) "En çok dinlenenler" else "Arama sonuçları") }
+        if (query.isNotBlank()) item { SectionTitle("Arama sonuçları") }
         when (val s = ui) {
             RadioUi.Loading -> item {
                 Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -192,7 +193,10 @@ fun RadioScreen(
             }
             is RadioUi.Ready -> {
                 if (s.stations.isEmpty()) item { EmptyState(Icons.Default.Radio, "İstasyon bulunamadı") }
+                val popularCount = if (query.isBlank()) s.stations.count { country.popularRank(it.title) >= 0 } else 0
                 itemsIndexed(s.stations, key = { _, st -> st.id }) { i, st ->
+                    if (query.isBlank() && i == 0 && popularCount > 0) SectionTitle("Popüler istasyonlar")
+                    if (query.isBlank() && i == popularCount) SectionTitle("Diğer istasyonlar")
                     StationRow(st, st.id == currentId, st.id in favIds,
                         onClick = { onPlay(s.stations, i) }, onFavorite = { vm.toggleFavorite(st) })
                 }

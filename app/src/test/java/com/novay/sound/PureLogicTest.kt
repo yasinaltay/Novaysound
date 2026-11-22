@@ -49,3 +49,18 @@ class PlaylistCodecTest {
 
     @Test fun bozukLinkNull() = assertNull(PlaylistCodec.decode(PlaylistCodec.PREFIX + "bozukveri!!"))
 }
+
+class RadioRankTest {
+    @Test fun turkceHarflerSadelesir() {
+        assertEquals("superfm", com.novay.sound.data.radio.radioKey("Süper FM"))
+        assertEquals("1live", com.novay.sound.data.radio.radioKey("1LIVE"))
+    }
+
+    @Test fun populerIstasyonlarSiralanir() {
+        val tr = com.novay.sound.data.radio.RadioCountry.TR
+        assertEquals(0, tr.popularRank("Kral FM"))
+        assertTrue(tr.popularRank("Süper FM") in 0..5)
+        assertEquals(-1, tr.popularRank("Mahalle Radyosu"))
+        assertEquals(0, com.novay.sound.data.radio.RadioCountry.DE.popularRank("1LIVE"))
+    }
+}
