@@ -15,8 +15,8 @@ android {
         applicationId = "com.novay.sound"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.9.1"
+        versionCode = 15
+        versionName = "0.10.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -59,7 +59,8 @@ android {
         jvmTarget = "17"
         freeCompilerArgs += listOf(
             "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
-            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi"
+            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
+            "-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi"
         )
     }
     buildFeatures {
@@ -120,6 +121,10 @@ dependencies {
     implementation(libs.zxing)
     // Sideload kurulumda da açılışı hızlandıran profil (src/main/baseline-prof.txt)
     implementation(libs.profileinstaller)
+    // Söz çevirisi: telefonda çalışan ML Kit (internetsiz, ücretsiz)
+    implementation(libs.mlkit.translate)
+    implementation(libs.mlkit.language.id)
+    implementation(libs.kotlinx.coroutines.play.services)
 
     // Testler
     testImplementation(libs.junit)

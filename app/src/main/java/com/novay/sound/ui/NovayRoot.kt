@@ -58,6 +58,7 @@ import com.novay.sound.ui.smart.SmartScreen
 import com.novay.sound.ui.car.CarModeScreen
 import com.novay.sound.ui.album.AlbumScreen
 import com.novay.sound.ui.wrapped.WrappedScreen
+import com.novay.sound.ui.learn.WordBookScreen
 import com.novay.sound.ui.stats.StatsScreen
 import com.novay.sound.ui.settings.EqualizerScreen
 import androidx.compose.runtime.CompositionLocalProvider
@@ -141,7 +142,8 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                         LibraryScreen(actions, currentId, onOpenPlaylist = { nav.navigate("playlist/$it") },
                             onOpenStats = { nav.navigate("stats") },
                             onOpenSmart = { nav.navigate("smart/${it.name}") },
-                            followed = followed, onOpenArtist = vm::openArtistUrl)
+                            followed = followed, onOpenArtist = vm::openArtistUrl,
+                            onOpenWords = { nav.navigate("words") })
                     }
                     composable("settings") {
                         SettingsScreen(
@@ -160,6 +162,7 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                         StatsScreen(actions, onBack = { nav.popBackStack() }, onOpenArtist = vm::openArtistUrl,
                             onOpenWrapped = { nav.navigate("wrapped") })
                     }
+                    composable("words") { WordBookScreen(vm, onBack = { nav.popBackStack() }) }
                     composable("wrapped") { WrappedScreen(onClose = { nav.popBackStack() }) }
                     composable("album?url={url}", arguments = listOf(navArgument("url") { type = NavType.StringType })) {
                         AlbumScreen(actions, currentId, onBack = { nav.popBackStack() }, onMessage = vm::msg)

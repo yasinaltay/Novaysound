@@ -180,7 +180,7 @@ fun FullPlayer(
             // ---- Kapak veya sözler ----
             AnimatedContent(showLyrics && !song.isRadio, label = "lyrics", modifier = Modifier.weight(1f).fillMaxWidth()) { lyricsMode ->
                 if (lyricsMode) {
-                    LyricsPane(song, state.positionMs, vm::lyrics, onSeek = player::seekTo, modifier = Modifier.fillMaxSize())
+                    LyricsPane(song, state.positionMs, vm, onSeek = player::seekTo, modifier = Modifier.fillMaxSize())
                 } else {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Artwork(

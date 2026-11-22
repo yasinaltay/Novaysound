@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import com.novay.sound.download.DlState
 import com.novay.sound.ui.components.LocalDownloads
 import com.novay.sound.ui.components.SectionTitle
@@ -140,6 +141,7 @@ fun LibraryScreen(
     onOpenSmart: (SmartList) -> Unit,
     followed: List<com.novay.sound.data.follow.FollowedArtist> = emptyList(),
     onOpenArtist: (String) -> Unit = {},
+    onOpenWords: () -> Unit = {},
     vm: LibraryViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -169,6 +171,7 @@ fun LibraryScreen(
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Kitaplık", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f))
+            IconButton(onClick = onOpenWords) { Icon(Icons.AutoMirrored.Filled.MenuBook, "Kelime defterim") }
             IconButton(onClick = onOpenStats) { Icon(Icons.Default.Insights, "İstatistikler") }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Menü") }

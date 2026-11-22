@@ -25,6 +25,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -49,57 +55,142 @@ private sealed interface LyricsUi {
     data class Ready(val lyrics: Lyrics) : LyricsUi
 }
 
-/** Senkron sözler: çalan satır vurgulanır ve ortada tutulur, satıra dokununca o ana gider. */
+/**
+ * Sözler + (açıksa) satır altında Türkçe çeviri. Öğrenme modunda kelimeye dokununca anlamı çıkar,
+ * kelime defterine kaydedilebilir. Senkron sözlerde çalan satır vurgulanır ve ortada tutulur.
+ */
 @Composable
 fun LyricsPane(
     song: Song,
     positionMs: Long,
-    load: suspend (Song) -> Lyrics?,
+    vm: com.novay.sound.ui.MainViewModel,
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val translateOn = settings.on(com.novay.sound.data.settings.Toggle.LYRICS_TRANSLATE)
+    val learnOn = settings.on(com.novay.sound.data.settings.Toggle.LEARN_MODE)
+    val downloading by vm.translationDownloading.collectAsStateWithLifecycle()
+
     val ui by produceState<LyricsUi>(LyricsUi.Loading, song.id) {
-        value = runCatching { load(song) }.getOrNull()?.let { LyricsUi.Ready(it) } ?: LyricsUi.NotFound
+        value = runCatching { vm.lyrics(song) }.getOrNull()?.let { LyricsUi.Ready(it) } ?: LyricsUi.NotFound
     }
-    Box(modifier) {
-        when (val s = ui) {
-            LyricsUi.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-            LyricsUi.NotFound -> EmptyState(Icons.Default.MusicOff, "Bu şarkının sözleri bulunamadı", Modifier.align(Alignment.Center))
-            is LyricsUi.Ready -> if (s.lyrics.isSynced) SyncedLyrics(s.lyrics, positionMs, onSeek)
-            else Text(
-                s.lyrics.plain.orEmpty(),
-                style = MaterialTheme.typography.titleMedium,
-                lineHeight = 30.sp,
-                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 16.dp)
+    val lyrics = (ui as? LyricsUi.Ready)?.lyrics
+    val lines = remember(lyrics) {
+        lyrics?.let { l -> if (l.isSynced) l.synced.map { it.text.ifBlank { "♪" } } else l.plain.orEmpty().lines() }.orEmpty()
+    }
+    // Çeviri (öğrenme modu da dili bilmek için çeviriye ihtiyaç duyar)
+    val translation by produceState<com.novay.sound.data.learn.LyricsTranslation?>(null, song.id, lines, translateOn || learnOn) {
+        value = null
+        if (lines.isNotEmpty() && (translateOn || learnOn)) value = runCatching { vm.translateLyrics(song, lines) }.getOrNull()
+    }
+    var wordDialog by remember { mutableStateOf<Pair<String, String>?>(null) } // kelime, satır
+
+    Column(modifier) {
+        if (lyrics != null) Row(
+            Modifier.fillMaxWidth().padding(bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.material3.FilterChip(selected = translateOn,
+                onClick = { vm.setToggle(com.novay.sound.data.settings.Toggle.LYRICS_TRANSLATE, !translateOn) },
+                label = { Text("🌐 Çeviri", maxLines = 1) })
+            androidx.compose.material3.FilterChip(selected = learnOn,
+                onClick = { vm.setToggle(com.novay.sound.data.settings.Toggle.LEARN_MODE, !learnOn) },
+                label = { Text("📖 Öğren", maxLines = 1) })
+            Text(
+                when {
+                    downloading -> "Çeviri modeli indiriliyor (~30 MB)…"
+                    translation != null -> "${translation!!.languageName} → Türkçe"
+                    translateOn || learnOn -> "Türkçe ya da çevrilemiyor"
+                    else -> ""
+                },
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            when (val s = ui) {
+                LyricsUi.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                LyricsUi.NotFound -> EmptyState(Icons.Default.MusicOff, "Bu şarkının sözleri bulunamadı", Modifier.align(Alignment.Center))
+                is LyricsUi.Ready -> {
+                    val synced = s.lyrics.isSynced
+                    val current = if (synced) s.lyrics.synced.indexOfLast { it.timeMs <= positionMs + 300 }.coerceAtLeast(0) else -1
+                    val listState = rememberLazyListState()
+                    if (synced) LaunchedEffect(current) { listState.animateScrollToItem((current - 2).coerceAtLeast(0)) }
+                    LazyColumn(state = listState, contentPadding = PaddingValues(vertical = if (synced) 120.dp else 16.dp),
+                        modifier = Modifier.fillMaxSize()) {
+                        itemsIndexed(lines) { i, line ->
+                            val active = synced && i == current
+                            val alpha = when { !synced || active -> 1f; i < current -> 0.35f; else -> 0.5f }
+                            val tr = translation?.lines?.getOrNull(i)?.takeIf { translateOn && it.isNotBlank() && it != line }
+                            Column(
+                                Modifier.fillMaxWidth()
+                                    .then(if (synced && !learnOn) Modifier.clickable { onSeek(s.lyrics.synced[i].timeMs) } else Modifier)
+                                    .padding(vertical = 8.dp)
+                            ) {
+                                val style = androidx.compose.ui.text.TextStyle(
+                                    fontSize = if (!synced) 18.sp else if (active) 26.sp else 22.sp,
+                                    lineHeight = if (synced) 32.sp else 26.sp,
+                                    fontWeight = if (active) FontWeight.ExtraBold else if (synced) FontWeight.Bold else FontWeight.Normal,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+                                )
+                                if (learnOn && translation != null && line != "♪") {
+                                    // Her kelime dokunulabilir
+                                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        line.split(' ').filter { it.isNotBlank() }.forEach { w ->
+                                            Text(w, style = style.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
+                                                modifier = Modifier.clickable {
+                                                    val clean = w.trim { !it.isLetterOrDigit() }
+                                                    if (clean.isNotEmpty()) wordDialog = clean to line
+                                                })
+                                        }
+                                    }
+                                } else Text(line, style = style)
+                                if (tr != null) Text(
+                                    tr,
+                                    fontSize = if (synced) 16.sp else 15.sp,
+                                    lineHeight = 22.sp,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = if (active || !synced) 0.95f else alpha * 0.9f),
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    wordDialog?.let { (word, line) ->
+        val lang = translation?.sourceLang ?: return@let
+        WordDialog(word, line, lang, song, vm, onDismiss = { wordDialog = null })
     }
 }
 
 @Composable
-private fun SyncedLyrics(lyrics: Lyrics, positionMs: Long, onSeek: (Long) -> Unit) {
-    val lines = lyrics.synced
-    val current by remember(lines, positionMs) {
-        derivedStateOf { lines.indexOfLast { it.timeMs <= positionMs + 300 }.coerceAtLeast(0) }
-    }
-    val listState = rememberLazyListState()
-    LaunchedEffect(current) { listState.animateScrollToItem((current - 2).coerceAtLeast(0)) }
-
-    LazyColumn(state = listState, contentPadding = PaddingValues(vertical = 120.dp), modifier = Modifier.fillMaxSize()) {
-        itemsIndexed(lines) { i, line ->
-            val active = i == current
-            Text(
-                line.text.ifBlank { "♪" },
-                fontSize = if (active) 26.sp else 22.sp,
-                lineHeight = 32.sp,
-                fontWeight = if (active) FontWeight.ExtraBold else FontWeight.Bold,
-                color = if (active) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.onSurface.copy(alpha = if (i < current) 0.35f else 0.5f),
-                textAlign = TextAlign.Start,
-                modifier = Modifier.fillMaxWidth().clickable { onSeek(line.timeMs) }.padding(vertical = 8.dp)
-            )
-        }
-    }
+private fun WordDialog(word: String, line: String, lang: String, song: Song, vm: com.novay.sound.ui.MainViewModel, onDismiss: () -> Unit) {
+    val meaning by produceState<String?>(null, word) { value = vm.translateWord(word, lang) ?: "Çevrilemedi" }
+    val saved = remember(word) { vm.isWordSaved(word, lang) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(word, fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                if (meaning == null) CircularProgressIndicator(Modifier.size(24.dp))
+                else Text(meaning!!, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                Text("\u201C$line\u201D", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(enabled = meaning != null && !saved, onClick = {
+                vm.saveWord(com.novay.sound.data.learn.SavedWord(word, meaning.orEmpty(), lang, "${song.title} – ${song.artist}", line))
+                onDismiss()
+            }) { Text(if (saved) "Defterde ✓" else "Defterime ekle") }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Kapat") } }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

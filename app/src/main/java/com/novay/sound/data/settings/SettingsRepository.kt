@@ -25,6 +25,8 @@ enum class Toggle(val key: String, val default: Boolean, val title: String, val 
     SHOW_TRENDING("f_show_trending", true, "Trendler (ana ekran)", "Türkiye'de trend olan şarkılar"),
     RECORD_STATS("f_record_stats", true, "Dinleme istatistiği", "Dinlediklerini istatistik ve akıllı listeler için kaydet"),
     SEARCH_HISTORY("f_search_history", true, "Arama geçmişi", "Son aramaları kaydet"),
+    LYRICS_TRANSLATE("f_lyrics_tr", true, "Söz çevirisi", "Almanca, İngilizce… sözlerin altında Türkçe çeviri (internetsiz)"),
+    LEARN_MODE("f_learn", false, "Öğrenme modu", "Sözlerde kelimeye dokununca anlamı; kelime defterine kaydet"),
     BLUR_BG("f_blur_bg", true, "Bulanık kapak arka planı", "Tam ekran oynatıcıda şarkı kapağı arka plan olur"),
     LOCK_LYRICS("f_lock_lyrics", false, "Kilit ekranında sözler (deneysel)", "Bildirim ve kilit ekranında sanatçı yerine o anki söz satırı"),
     AUTO_PLAY_BT("f_auto_play_bt", false, "Bluetooth bağlanınca çal", "Araba/kulaklık bağlanınca kaldığın yerden devam et"),

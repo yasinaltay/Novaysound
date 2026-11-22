@@ -62,7 +62,9 @@ class MainViewModel @Inject constructor(
     private val smart: SmartPlaylists,
     private val radio: RadioRepository,
     private val follows: FollowRepository,
-    settingsRepo: SettingsRepository,
+    private val settingsRepo: SettingsRepository,
+    private val translator: com.novay.sound.data.learn.LyricsTranslator,
+    private val wordBook: com.novay.sound.data.learn.WordBook,
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context
 ) : ViewModel() {
 
@@ -107,6 +109,16 @@ class MainViewModel @Inject constructor(
     }
 
     fun isLiked(id: String): Flow<Boolean> = library.isLiked(id)
+
+    // ---- Söz çevirisi + öğrenme modu ----
+    val translationDownloading = translator.downloading
+    suspend fun translateLyrics(song: Song, lines: List<String>) = translator.translate(song.id, lines)
+    suspend fun translateWord(word: String, lang: String) = translator.translateWord(word, lang)
+    val savedWords = wordBook.words
+    fun isWordSaved(word: String, lang: String) = wordBook.contains(word, lang)
+    fun saveWord(w: com.novay.sound.data.learn.SavedWord) { wordBook.add(w); msg("\"${w.word}\" kelime defterine eklendi") }
+    fun removeWord(w: com.novay.sound.data.learn.SavedWord) = wordBook.remove(w)
+    fun setToggle(t: com.novay.sound.data.settings.Toggle, on: Boolean) = viewModelScope.launch { settingsRepo.setToggle(t, on) }
     suspend fun lyrics(song: Song): Lyrics? = lyricsRepo.get(song)
 
     fun addToPlaylist(playlistId: Long, song: Song) = viewModelScope.launch {
