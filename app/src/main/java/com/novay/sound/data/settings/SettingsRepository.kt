@@ -27,6 +27,8 @@ enum class Toggle(val key: String, val default: Boolean, val title: String, val 
     SEARCH_HISTORY("f_search_history", true, "Arama geçmişi", "Son aramaları kaydet"),
     BLUR_BG("f_blur_bg", true, "Bulanık kapak arka planı", "Tam ekran oynatıcıda şarkı kapağı arka plan olur"),
     LOCK_LYRICS("f_lock_lyrics", false, "Kilit ekranında sözler (deneysel)", "Bildirim ve kilit ekranında sanatçı yerine o anki söz satırı"),
+    AUTO_PLAY_BT("f_auto_play_bt", false, "Bluetooth bağlanınca çal", "Araba/kulaklık bağlanınca kaldığın yerden devam et"),
+    EQ_PER_DEVICE("f_eq_per_device", false, "Cihaza özel ekolayzer", "Hoparlör, kulaklık ve her Bluetooth cihazı için ayrı ayar"),
     AUTO_SLEEP("f_auto_sleep", false, "Otomatik uyku zamanlayıcısı", "Gece çalmaya başlayınca zamanlayıcıyı kendiliğinden kur"),
     ALARM("f_alarm", false, "Müzikli alarm", "Her sabah seçtiğin saatte müzikle uyandır")
 }
@@ -57,7 +59,11 @@ data class AppSettings(
     val alarmMinute: Int = 30,
     val alarmSource: String = "FAVORITES", // FAVORITES | DISCOVER
     val boostDb: Int = 0,                  // ses yükseltme 0..6
-    val cacheSizeMb: Int = 2048
+    val cacheSizeMb: Int = 2048,
+    val btDevices: Set<String> = emptySet(),        // otomatik çalacak Bluetooth adresleri (boş = tüm ses cihazları)
+    val eqProfiles: Map<String, String> = emptyMap(), // çıkış -> "açık|preset|b1,b2,…"
+    val telegramToken: String = "",
+    val telegramChatId: String = ""
 ) {
     fun on(t: Toggle): Boolean = toggles[t] ?: t.default
 }
@@ -109,7 +115,12 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             alarmMinute = p[intKey("alarm_minute")] ?: 30,
             alarmSource = p[stringPreferencesKey("alarm_source")] ?: "FAVORITES",
             boostDb = p[intKey("boost_db")] ?: 0,
-            cacheSizeMb = p[intKey("cache_size_mb")] ?: 2048
+            cacheSizeMb = p[intKey("cache_size_mb")] ?: 2048,
+            btDevices = p[stringPreferencesKey("bt_devices")]?.split(',')?.filter { it.isNotBlank() }?.toSet().orEmpty(),
+            eqProfiles = p.asMap().filterKeys { it.name.startsWith("eqp_") }
+                .map { (k, v) -> k.name.removePrefix("eqp_") to v.toString() }.toMap(),
+            telegramToken = p[stringPreferencesKey("tg_token")].orEmpty(),
+            telegramChatId = p[stringPreferencesKey("tg_chat")].orEmpty()
         )
     }
 
@@ -129,6 +140,15 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     }
     suspend fun setToggle(t: Toggle, on: Boolean) = set { it[booleanPreferencesKey(t.key)] = on }
     suspend fun setInt(name: String, value: Int) = set { it[intKey(name)] = value }
+    suspend fun setBtDevices(addrs: Set<String>) = set { it[stringPreferencesKey("bt_devices")] = addrs.joinToString(",") }
+    suspend fun setEqProfile(output: String, enabled: Boolean, preset: Int, bands: List<Int>) = set {
+        it[stringPreferencesKey("eqp_$output")] = "$enabled|$preset|${bands.joinToString(",")}"
+    }
+    suspend fun setTelegram(token: String, chatId: String) = set {
+        it[stringPreferencesKey("tg_token")] = token.trim()
+        it[stringPreferencesKey("tg_chat")] = chatId.trim()
+    }
+
     suspend fun setAlarmSource(src: String) = set { it[stringPreferencesKey("alarm_source")] = src }
 
     suspend fun setAudioQuality(q: AudioQuality) = set { it[Keys.QUALITY] = q.name }

@@ -34,7 +34,9 @@ data class PlayerState(
     val currentIndex: Int = -1,
     val shuffle: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
-    val liveTitle: String? = null   // radyoda o an çalan şarkı (yayın bilgisi)
+    val liveTitle: String? = null,  // radyoda o an çalan şarkı (yayın bilgisi)
+    val speed: Float = 1f,
+    val pitch: Float = 1f
 )
 
 /** Arayüzün PlaybackService'e MediaController ile bağlandığı tek nokta. */
@@ -98,7 +100,9 @@ class PlayerConnection @Inject constructor(
             queue = queue,
             currentIndex = c.currentMediaItemIndex,
             shuffle = c.shuffleModeEnabled,
-            repeatMode = c.repeatMode
+            repeatMode = c.repeatMode,
+            speed = c.playbackParameters.speed,
+            pitch = c.playbackParameters.pitch
         )
         if (c.isPlaying) startTicker() else ticker?.cancel()
     }
@@ -157,6 +161,10 @@ class PlayerConnection @Inject constructor(
     fun skipTo(index: Int) = withController { it.seekToDefaultPosition(index); it.play() }
     fun removeAt(index: Int) = withController { it.removeMediaItem(index) }
     fun move(from: Int, to: Int) = withController { it.moveMediaItem(from, to) }
+    fun setSpeed(speed: Float, pitch: Float) = withController {
+        it.playbackParameters = androidx.media3.common.PlaybackParameters(speed, pitch)
+    }
+    fun repeatOne() = withController { it.repeatMode = Player.REPEAT_MODE_ONE }
     fun toggleShuffle() = withController { it.shuffleModeEnabled = !it.shuffleModeEnabled }
     fun cycleRepeat() = withController {
         it.repeatMode = when (it.repeatMode) {

@@ -30,7 +30,10 @@ data class EqInfo(
  * PlaybackService oynatıcının audioSessionId'sini verir; ayarlar değiştikçe uygulanır.
  */
 @Singleton
-class AudioEffects @Inject constructor(private val settings: SettingsRepository) {
+class AudioEffects @Inject constructor(
+    private val settings: SettingsRepository,
+    private val output: AudioOutput
+) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var job: Job? = null
@@ -76,17 +79,26 @@ class AudioEffects @Inject constructor(private val settings: SettingsRepository)
         }
         enhancer = runCatching { android.media.audiofx.LoudnessEnhancer(sessionId) }
             .onFailure { CrashLogger.log("Ses yükseltme açılamadı", it) }.getOrNull()
-        job = scope.launch { settings.settings.collect(::apply) }
+        // Ayar veya ses çıkışı (hoparlör/kulaklık/Bluetooth) değişince yeniden uygula
+        job = scope.launch {
+            kotlinx.coroutines.flow.combine(settings.settings, output.current) { s, o -> s to o }
+                .collect { (s, o) -> apply(s, o.key) }
+        }
     }
 
-    private fun apply(s: AppSettings) {
+    private fun apply(s: AppSettings, outputKey: String) {
+        // Cihaza özel profil varsa onu, yoksa genel ayarı kullan
+        val profile = if (s.on(com.novay.sound.data.settings.Toggle.EQ_PER_DEVICE)) s.eqProfiles[outputKey]?.let(::parseProfile) else null
+        val on = profile?.first ?: s.eqEnabled
+        val preset = profile?.second ?: s.eqPreset
+        val levels = profile?.third ?: s.eqBands
         equalizer?.runCatching {
-            enabled = s.eqEnabled
-            if (s.eqEnabled) {
+            enabled = on
+            if (on) {
                 val bands = numberOfBands.toInt()
                 when {
-                    s.eqBands.size == bands -> s.eqBands.forEachIndexed { i, lvl -> setBandLevel(i.toShort(), lvl.toShort()) }
-                    s.eqPreset >= 0 -> usePreset(s.eqPreset.toShort())
+                    levels.size == bands -> levels.forEachIndexed { i, lvl -> setBandLevel(i.toShort(), lvl.toShort()) }
+                    preset >= 0 -> usePreset(preset.toShort())
                 }
             }
         }
@@ -96,6 +108,11 @@ class AudioEffects @Inject constructor(private val settings: SettingsRepository)
             enabled = s.boostDb > 0
         }
     }
+
+    private fun parseProfile(v: String): Triple<Boolean, Int, List<Int>>? = runCatching {
+        val (a, b, c) = v.split('|')
+        Triple(a.toBoolean(), b.toInt(), c.split(',').mapNotNull { it.toIntOrNull() })
+    }.getOrNull()
 
     fun release() {
         job?.cancel()

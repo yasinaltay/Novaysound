@@ -32,8 +32,12 @@ import javax.inject.Singleton
 enum class SearchFilter(val value: String) {
     SONGS(YoutubeSearchQueryHandlerFactory.MUSIC_SONGS),   // YouTube Music şarkıları
     VIDEOS(YoutubeSearchQueryHandlerFactory.VIDEOS),       // normal YouTube videoları
-    ARTISTS(YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS) // YouTube Music sanatçıları
+    ARTISTS(YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS), // YouTube Music sanatçıları
+    ALBUMS(YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS)    // YouTube Music albümleri
 }
+
+data class AlbumItem(val title: String, val url: String, val artist: String, val cover: String?, val count: Long)
+data class Album(val title: String, val url: String, val artist: String, val cover: String?, val songs: List<Song>)
 
 data class ArtistItem(val name: String, val url: String, val avatar: String?, val subscribers: Long)
 
@@ -44,7 +48,8 @@ data class Artist(
     val banner: String?,
     val subscribers: Long,
     val popular: List<Song>,
-    val latest: List<Song>
+    val latest: List<Song>,
+    val albums: List<AlbumItem> = emptyList()
 )
 
 data class SearchPage(
@@ -216,7 +221,12 @@ class YouTubeRepository @Inject constructor(private val flags: FeatureFlags) {
         val popular = runCatching { search(name, SearchFilter.SONGS).songs }.getOrDefault(emptyList())
             .filter { it.artist.contains(name, ignoreCase = true) || name.contains(it.artist, ignoreCase = true) }
             .take(15)
+        val albumsTab = info.tabs.firstOrNull { ChannelTabs.ALBUMS in it.contentFilters }
+        val albums = albumsTab?.let {
+            runCatching { ChannelTabInfo.getInfo(service, it).relatedItems.toAlbums() }.getOrNull()
+        }.orEmpty()
         Artist(
+            albums = albums,
             name = name, url = url,
             avatar = info.avatars.maxByOrNull { it.height }?.url,
             banner = info.banners.maxByOrNull { it.height }?.url,
@@ -225,6 +235,37 @@ class YouTubeRepository @Inject constructor(private val flags: FeatureFlags) {
             latest = latest
         )
     }
+
+    // ---------------- Albüm ----------------
+
+    suspend fun searchAlbums(query: String): List<AlbumItem> = withContext(Dispatchers.IO) {
+        val handler = service.searchQHFactory.fromQuery(query, listOf(SearchFilter.ALBUMS.value), "")
+        SearchInfo.getInfo(service, handler).relatedItems.toAlbums()
+    }
+
+    suspend fun album(url: String): Album = withContext(Dispatchers.IO) {
+        val info = PlaylistInfo.getInfo(service, url)
+        val songs = info.relatedItems.toSongs().toMutableList()
+        var next = info.nextPage
+        while (Page.isValid(next) && songs.size < 200) {
+            val more = PlaylistInfo.getMoreItems(service, url, next)
+            songs += more.items.toSongs()
+            next = more.nextPage
+        }
+        val artist = cleanArtist(info.uploaderName).ifBlank { songs.firstOrNull()?.artist.orEmpty() }
+        Album(
+            title = info.name.removePrefix("Album - ").trim(),
+            url = url, artist = artist,
+            cover = info.thumbnails.maxByOrNull { it.height }?.url ?: songs.firstOrNull()?.thumbnailUrl,
+            songs = songs.map { if (it.artist.isBlank()) it.copy(artist = artist) else it }
+        )
+    }
+
+    private fun List<InfoItem>.toAlbums(): List<AlbumItem> =
+        filterIsInstance<org.schabi.newpipe.extractor.playlist.PlaylistInfoItem>().map {
+            AlbumItem(it.name.removePrefix("Album - ").trim(), it.url, cleanArtist(it.uploaderName),
+                it.thumbnails.maxByOrNull { t -> t.height }?.url, it.streamCount)
+        }.distinctBy { it.url }
 
     // ---------------- Trendler ----------------
 

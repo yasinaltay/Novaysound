@@ -62,6 +62,7 @@ class PlaybackService : MediaLibraryService() {
     companion object {
         const val CMD_LIKE = "novay.LIKE"
         const val ACTION_ALARM = "com.novay.sound.ALARM"
+        const val ACTION_AUTOPLAY = "com.novay.sound.AUTOPLAY"
         private const val ALARM_NOTIFICATION = 77
     }
 
@@ -173,24 +174,43 @@ class PlaybackService : MediaLibraryService() {
             startAlarm()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_AUTOPLAY) {
+            startTempForeground("Novay Sound", "Bluetooth bağlandı, müzik başlıyor…")
+            if (player.mediaItemCount == 0) restoreQueue()
+            scope.launch {
+                if (player.mediaItemCount == 0) {
+                    val songs = library.getRecent().take(50)
+                    if (songs.isEmpty()) { stopForeground(STOP_FOREGROUND_REMOVE); return@launch }
+                    player.setMediaItems(songs.map { it.toMediaItem() })
+                }
+                player.prepare()
+                player.play()
+            }
+            return START_NOT_STICKY
+        }
         return super.onStartCommand(intent, flags, startId)
     }
 
-    private fun startAlarm() {
+    /** Arka plandan başlatılınca (alarm, Bluetooth) 5 sn içinde ön plana geçmek zorunlu. */
+    private fun startTempForeground(title: String, text: String) {
         val nm = getSystemService(android.app.NotificationManager::class.java)
         nm.createNotificationChannel(
-            android.app.NotificationChannel("alarm", "Alarm", android.app.NotificationManager.IMPORTANCE_HIGH)
+            android.app.NotificationChannel("alarm", "Alarm ve otomatik çalma", android.app.NotificationManager.IMPORTANCE_HIGH)
         )
         val n = androidx.core.app.NotificationCompat.Builder(this, "alarm")
             .setSmallIcon(R.drawable.ic_stat_music)
-            .setContentTitle("Günaydın ☀️")
-            .setContentText("Novay Sound alarmı başlıyor…")
+            .setContentTitle(title)
+            .setContentText(text)
             .setOngoing(true)
             .build()
         androidx.core.app.ServiceCompat.startForeground(
             this, ALARM_NOTIFICATION, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
         )
-        alarmPending = true
+        alarmPending = true // çalma başlayınca bu bildirim kaldırılır
+    }
+
+    private fun startAlarm() {
+        startTempForeground("Günaydın ☀️", "Novay Sound alarmı başlıyor…")
         scope.launch {
             val s = flags.current
             val songs = (if (s.alarmSource == "DISCOVER") runCatching { smart.songs(SmartList.DISCOVER) }.getOrDefault(emptyList())
