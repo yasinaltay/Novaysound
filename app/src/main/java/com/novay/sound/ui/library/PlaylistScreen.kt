@@ -19,6 +19,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.layout.aspectRatio
+import com.novay.sound.data.model.Song
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import androidx.compose.material3.AlertDialog
@@ -87,6 +90,7 @@ fun PlaylistScreen(
     var menu by rememberSaveable { mutableStateOf(false) }
     var rename by rememberSaveable { mutableStateOf(false) }
     var delete by rememberSaveable { mutableStateOf(false) }
+    var share by rememberSaveable { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -100,6 +104,7 @@ fun PlaylistScreen(
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Menü") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("Paylaş (QR kod / link)") }, onClick = { menu = false; share = true })
                     DropdownMenuItem(text = { Text("Tümünü indir") }, onClick = { menu = false; actions.downloadAll(songs) })
                     DropdownMenuItem(text = { Text("Yeniden adlandır") }, onClick = { menu = false; rename = true })
                     DropdownMenuItem(text = { Text("Listeyi sil") }, onClick = { menu = false; delete = true })
@@ -150,6 +155,8 @@ fun PlaylistScreen(
         }
     }
 
+    if (share) SharePlaylistDialog(name, songs, onDismiss = { share = false })
+
     if (rename) {
         TextInputDialog(title = "Yeniden adlandır", initial = name,
             onDismiss = { rename = false }, onConfirm = { vm.rename(it); rename = false })
@@ -163,4 +170,47 @@ fun PlaylistScreen(
             dismissButton = { TextButton(onClick = { delete = false }) { Text("İptal") } }
         )
     }
+}
+
+
+/** Listeyi başka bir Novay Sound'a göndermek için QR kod + link. */
+@Composable
+private fun SharePlaylistDialog(name: String, songs: List<Song>, onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val link = remember(name, songs) { com.novay.sound.data.share.PlaylistCodec.encode(name, songs) }
+    val qr = remember(link) { com.novay.sound.data.share.PlaylistCodec.qr(link) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("\"$name\" paylaş") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (qr != null) {
+                    androidx.compose.foundation.Image(qr.asImageBitmap(), "QR kod", Modifier.fillMaxWidth().aspectRatio(1f))
+                    Text("Diğer telefonda kamerayla okut, Novay Sound'da açılır.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else Text("Liste QR koda sığmayacak kadar uzun, link olarak paylaş.",
+                    style = MaterialTheme.typography.bodyMedium)
+                Text("Linki alan kişi Novay Sound'daki arama kutusuna yapıştırarak da ekleyebilir.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp))
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(android.content.Intent.EXTRA_TEXT, "🎵 $name (${songs.size} şarkı) – Novay Sound listesi:\n$link")
+                if (qr != null) {
+                    val dir = java.io.File(context.cacheDir, "share").apply { mkdirs() }
+                    val f = java.io.File(dir, "liste-qr.png")
+                    f.outputStream().use { qr.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                    val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
+                    intent.setType("image/png").putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                        .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(android.content.Intent.createChooser(intent, "Listeyi paylaş"))
+                onDismiss()
+            }) { Text("Paylaş") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Kapat") } }
+    )
 }

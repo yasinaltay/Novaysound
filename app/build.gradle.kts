@@ -113,6 +113,7 @@ dependencies {
     implementation(libs.media3.hls)
     implementation(libs.mediarouter)
     implementation(libs.reorderable)
+    implementation(libs.zxing)
 
     // Room
     implementation(libs.room.runtime)

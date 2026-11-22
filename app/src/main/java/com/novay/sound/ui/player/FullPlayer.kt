@@ -75,6 +75,7 @@ import com.novay.sound.ui.components.Artwork
 import com.novay.sound.ui.components.CastButton
 import com.novay.sound.ui.components.shareSong
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Speed
 import com.novay.sound.ui.components.LocalDownloads
 import com.novay.sound.ui.components.formatDuration
 import kotlinx.coroutines.delay
@@ -99,6 +100,7 @@ fun FullPlayer(
     var showSleep by rememberSaveable { mutableStateOf(false) }
     var showLyrics by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var showSpeed by rememberSaveable { mutableStateOf(false) }
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
     var dragTotal by remember { mutableFloatStateOf(0f) }
@@ -150,6 +152,10 @@ fun FullPlayer(
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Menü") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        if (!song.isRadio) DropdownMenuItem(
+                            text = { Text("Hız ve ton (%.2gx)".format(state.speed)) },
+                            leadingIcon = { Icon(Icons.Default.Speed, null) },
+                            onClick = { menu = false; showSpeed = true })
                         DropdownMenuItem(text = { Text("Ekolayzer") }, leadingIcon = { Icon(Icons.Default.GraphicEq, null) },
                             onClick = { menu = false; onOpenEqualizer() })
                         if (!song.isLocal && !song.isRadio) DropdownMenuItem(text = { Text("Paylaş") }, leadingIcon = { Icon(Icons.Default.Share, null) },
@@ -287,6 +293,7 @@ fun FullPlayer(
     }
 
     if (showQueue) QueueSheet(state, player, onDismiss = { showQueue = false })
+    if (showSpeed) SpeedSheet(state.speed, state.pitch, onChange = player::setSpeed, onDismiss = { showSpeed = false })
     if (showSleep) SleepTimerSheet(
         state = sleep,
         onStart = vm.sleepTimer::start,

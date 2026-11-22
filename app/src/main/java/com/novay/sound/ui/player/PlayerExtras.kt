@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.derivedStateOf
@@ -135,5 +136,38 @@ fun SleepTimerSheet(
             modifier = Modifier.clickable { onCancel(); onDismiss() }
         )
         Box(Modifier.padding(bottom = 24.dp))
+    }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SpeedSheet(speed: Float, pitch: Float, onChange: (Float, Float) -> Unit, onDismiss: () -> Unit) {
+    var sp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(speed) }
+    var pt by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(pitch) }
+    var linked by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(speed == pitch && speed != 1f) }
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        androidx.compose.foundation.layout.Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
+            Text("Hız ve ton", style = MaterialTheme.typography.titleLarge)
+            Text("Hız: %.2fx".format(sp), modifier = Modifier.padding(top = 16.dp))
+            androidx.compose.material3.Slider(value = sp, valueRange = 0.5f..2f, onValueChange = {
+                sp = it; if (linked) pt = it
+            }, onValueChangeFinished = { onChange(sp, pt) })
+            androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                listOf(0.75f, 1f, 1.25f, 1.5f).forEach { v ->
+                    androidx.compose.material3.FilterChip(selected = sp == v, onClick = {
+                        sp = v; if (linked) pt = v; onChange(sp, pt)
+                    }, label = { Text("${v}x") })
+                }
+            }
+            Text("Ton: %.2f".format(pt), modifier = Modifier.padding(top = 16.dp))
+            androidx.compose.material3.Slider(value = pt, valueRange = 0.5f..2f, enabled = !linked,
+                onValueChange = { pt = it }, onValueChangeFinished = { onChange(sp, pt) })
+            androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Tonu hızla birlikte değiştir (plak efekti)", modifier = Modifier.weight(1f))
+                androidx.compose.material3.Switch(checked = linked, onCheckedChange = { linked = it; if (it) { pt = sp; onChange(sp, pt) } })
+            }
+            androidx.compose.material3.TextButton(onClick = { sp = 1f; pt = 1f; linked = false; onChange(1f, 1f) }) { Text("Sıfırla") }
+        }
     }
 }

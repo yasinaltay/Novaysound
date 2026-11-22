@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
                 if (!vm.handleText(it)) Toast.makeText(this, "YouTube linki bulunamadı", Toast.LENGTH_SHORT).show()
             }
             Intent.ACTION_VIEW -> intent.dataString?.let { vm.handleText(it) }
+            "com.novay.sound.action.OPEN_ARTIST" -> intent.getStringExtra("url")?.let(vm::openArtistUrl)
             // Uygulama kısayolları
             "com.novay.sound.action.SHUFFLE_FAVORITES" -> vm.playFromSearch("")
             "com.novay.sound.action.DISCOVER" -> vm.playSmart(com.novay.sound.data.smart.SmartList.DISCOVER)

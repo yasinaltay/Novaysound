@@ -1,6 +1,7 @@
 package com.novay.sound.ui.search
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -86,7 +87,8 @@ sealed interface SearchUi {
         val songs: List<Song>,
         val canLoadMore: Boolean,
         val loadingMore: Boolean = false,
-        val artists: List<ArtistItem> = emptyList()
+        val artists: List<ArtistItem> = emptyList(),
+        val albums: List<com.novay.sound.data.youtube.AlbumItem> = emptyList()
     ) : SearchUi
     data class Error(val message: String) : SearchUi
 }
@@ -125,7 +127,10 @@ class SearchViewModel @Inject constructor(
         job = viewModelScope.launch {
             _ui.value = SearchUi.Loading
             try {
-                if (filter.value == SearchFilter.ARTISTS) {
+                if (filter.value == SearchFilter.ALBUMS) {
+                    page = null
+                    _ui.value = SearchUi.Results(emptyList(), false, albums = youtube.searchAlbums(q.trim()))
+                } else if (filter.value == SearchFilter.ARTISTS) {
                     page = null
                     _ui.value = SearchUi.Results(emptyList(), false, artists = youtube.searchArtists(q.trim()))
                 } else {
@@ -174,6 +179,7 @@ fun SearchScreen(
     currentId: String?,
     onLink: (String) -> Boolean,
     onOpenArtist: (String) -> Unit,
+    onOpenAlbum: (String) -> Unit = {},
     vm: SearchViewModel = hiltViewModel()
 ) {
     val query by vm.query.collectAsStateWithLifecycle()
@@ -221,13 +227,15 @@ fun SearchScreen(
             modifier = Modifier.fillMaxWidth().padding(16.dp).focusRequester(focus)
         )
 
-        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = filter == SearchFilter.SONGS, onClick = { vm.setFilter(SearchFilter.SONGS) },
                 label = { Text("Şarkılar") })
             FilterChip(selected = filter == SearchFilter.VIDEOS, onClick = { vm.setFilter(SearchFilter.VIDEOS) },
                 label = { Text("Videolar") })
             FilterChip(selected = filter == SearchFilter.ARTISTS, onClick = { vm.setFilter(SearchFilter.ARTISTS) },
                 label = { Text("Sanatçılar") })
+            FilterChip(selected = filter == SearchFilter.ALBUMS, onClick = { vm.setFilter(SearchFilter.ALBUMS) },
+                label = { Text("Albümler") })
         }
 
         when (val state = ui) {
@@ -279,8 +287,22 @@ fun SearchScreen(
                 }
                 LaunchedEffect(nearEnd) { if (nearEnd) vm.loadMore() }
 
-                if (state.songs.isEmpty() && state.artists.isEmpty()) EmptyState(Icons.Default.Search, "Sonuç bulunamadı")
+                if (state.songs.isEmpty() && state.artists.isEmpty() && state.albums.isEmpty()) EmptyState(Icons.Default.Search, "Sonuç bulunamadı")
                 LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(vertical = 8.dp)) {
+                    items(state.albums, key = { "al" + it.url }) { a ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { onOpenAlbum(a.url) }.padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Artwork(a.cover, Modifier.size(56.dp), corner = 8.dp)
+                            Box(Modifier.width(14.dp))
+                            Column {
+                                Text(a.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(listOf("Albüm", a.artist, if (a.count > 0) "${a.count} şarkı" else "").filter { it.isNotBlank() }.joinToString(" • "),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            }
+                        }
+                    }
                     items(state.artists, key = { it.url }) { a ->
                         Row(
                             Modifier.fillMaxWidth().clickable { onOpenArtist(a.url) }.padding(horizontal = 16.dp, vertical = 8.dp),

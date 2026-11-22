@@ -56,6 +56,8 @@ import com.novay.sound.ui.components.NowPlaying
 import com.novay.sound.ui.artist.ArtistScreen
 import com.novay.sound.ui.smart.SmartScreen
 import com.novay.sound.ui.car.CarModeScreen
+import com.novay.sound.ui.album.AlbumScreen
+import com.novay.sound.ui.wrapped.WrappedScreen
 import com.novay.sound.ui.stats.StatsScreen
 import com.novay.sound.ui.settings.EqualizerScreen
 import androidx.compose.runtime.CompositionLocalProvider
@@ -99,6 +101,7 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
         val currentId = state.song?.id
 
         val downloads by vm.downloadItems.collectAsStateWithLifecycle()
+        val followed by vm.followedArtists.collectAsStateWithLifecycle()
 
         LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
         LaunchedEffect(Unit) { vm.navigation.collect { route -> showPlayer = false; nav.navigate(route) } }
@@ -114,7 +117,7 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                 containerColor = MaterialTheme.colorScheme.background,
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
-                    if (nav.currentBackStackEntryAsState().value?.destination?.route != "car") Column {
+                    if (nav.currentBackStackEntryAsState().value?.destination?.route !in setOf("car", "wrapped")) Column {
                         MiniPlayer(state, onOpen = { showPlayer = true },
                             onToggle = vm.player::togglePlay, onNext = vm.player::next, onPrevious = vm.player::previous)
                         BottomBar(nav)
@@ -130,13 +133,15 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                             onMood = vm::playMood)
                     }
                     composable("search") {
-                        SearchScreen(actions, currentId, onLink = vm::handleText, onOpenArtist = vm::openArtistUrl)
+                        SearchScreen(actions, currentId, onLink = vm::handleText, onOpenArtist = vm::openArtistUrl,
+                            onOpenAlbum = { nav.navigate("album?url=${android.net.Uri.encode(it)}") })
                     }
-                    composable("radio") { RadioScreen(currentId, onPlay = actions.play) }
+                    composable("radio") { RadioScreen(currentId, onPlay = actions.play, onSleepSound = vm::playSleepSound) }
                     composable("library") {
                         LibraryScreen(actions, currentId, onOpenPlaylist = { nav.navigate("playlist/$it") },
                             onOpenStats = { nav.navigate("stats") },
-                            onOpenSmart = { nav.navigate("smart/${it.name}") })
+                            onOpenSmart = { nav.navigate("smart/${it.name}") },
+                            followed = followed, onOpenArtist = vm::openArtistUrl)
                     }
                     composable("settings") {
                         SettingsScreen(
@@ -152,10 +157,18 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                     }
                     composable("equalizer") { EqualizerScreen(onBack = { nav.popBackStack() }) }
                     composable("stats") {
-                        StatsScreen(actions, onBack = { nav.popBackStack() }, onOpenArtist = vm::openArtistUrl)
+                        StatsScreen(actions, onBack = { nav.popBackStack() }, onOpenArtist = vm::openArtistUrl,
+                            onOpenWrapped = { nav.navigate("wrapped") })
+                    }
+                    composable("wrapped") { WrappedScreen(onClose = { nav.popBackStack() }) }
+                    composable("album?url={url}", arguments = listOf(navArgument("url") { type = NavType.StringType })) {
+                        AlbumScreen(actions, currentId, onBack = { nav.popBackStack() }, onMessage = vm::msg)
                     }
                     composable("artist?url={url}", arguments = listOf(navArgument("url") { type = NavType.StringType })) {
-                        ArtistScreen(actions, currentId, onBack = { nav.popBackStack() })
+                        ArtistScreen(actions, currentId, onBack = { nav.popBackStack() },
+                            followed = followed.map { it.url }.toSet(),
+                            onToggleFollow = vm::toggleFollow,
+                            onOpenAlbum = { nav.navigate("album?url=${android.net.Uri.encode(it)}") })
                     }
                     composable("playlist/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) {
                         PlaylistScreen(actions, currentId, onBack = { nav.popBackStack() })

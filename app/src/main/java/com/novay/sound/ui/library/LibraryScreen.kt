@@ -33,6 +33,7 @@ import com.novay.sound.data.local.LocalMusicRepository
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.clip
 import com.novay.sound.ui.smart.SmartListCards
 import com.novay.sound.data.smart.SmartList
 import androidx.compose.material.icons.filled.MoreVert
@@ -137,6 +138,8 @@ fun LibraryScreen(
     onOpenPlaylist: (Long) -> Unit,
     onOpenStats: () -> Unit,
     onOpenSmart: (SmartList) -> Unit,
+    followed: List<com.novay.sound.data.follow.FollowedArtist> = emptyList(),
+    onOpenArtist: (String) -> Unit = {},
     vm: LibraryViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -199,6 +202,24 @@ fun LibraryScreen(
             1 -> LazyColumn(Modifier.fillMaxSize()) {
                 item { SectionTitle("Akıllı listeler") }
                 item { SmartListCards(onOpenSmart) }
+                if (followed.isNotEmpty()) {
+                    item { SectionTitle("Takip ettiğin sanatçılar") }
+                    item {
+                        androidx.compose.foundation.lazy.LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            items(followed, key = { it.url }) { a ->
+                                Column(Modifier.width(80.dp).clickable { onOpenArtist(a.url) },
+                                    horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Artwork(a.avatar, Modifier.size(72.dp).clip(androidx.compose.foundation.shape.CircleShape), corner = 36.dp)
+                                    Text(a.name, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                                }
+                            }
+                        }
+                    }
+                }
                 item { SectionTitle("Listelerin") }
                 item {
                     Row(

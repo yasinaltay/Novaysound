@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -84,7 +86,15 @@ class ArtistViewModel @Inject constructor(
 }
 
 @Composable
-fun ArtistScreen(actions: SongActions, currentId: String?, onBack: () -> Unit, vm: ArtistViewModel = hiltViewModel()) {
+fun ArtistScreen(
+    actions: SongActions,
+    currentId: String?,
+    onBack: () -> Unit,
+    followed: Set<String> = emptySet(),
+    onToggleFollow: (String, String, String?) -> Unit = { _, _, _ -> },
+    onOpenAlbum: (String) -> Unit = {},
+    vm: ArtistViewModel = hiltViewModel()
+) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
         when (val s = ui) {
@@ -93,7 +103,12 @@ fun ArtistScreen(actions: SongActions, currentId: String?, onBack: () -> Unit, v
                 EmptyState(Icons.Default.ErrorOutline, s.message)
                 Button(onClick = { vm.load() }) { Text("Tekrar dene") }
             }
-            is ArtistUi.Ready -> ArtistContent(s.artist, actions, currentId)
+            is ArtistUi.Ready -> ArtistContent(
+                s.artist, actions, currentId,
+                following = s.artist.url in followed,
+                onFollow = { onToggleFollow(s.artist.name, s.artist.url, s.artist.avatar) },
+                onOpenAlbum = onOpenAlbum
+            )
         }
         IconButton(onClick = onBack, modifier = Modifier.padding(4.dp)) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri")
@@ -102,7 +117,10 @@ fun ArtistScreen(actions: SongActions, currentId: String?, onBack: () -> Unit, v
 }
 
 @Composable
-private fun ArtistContent(artist: Artist, actions: SongActions, currentId: String?) {
+private fun ArtistContent(
+    artist: Artist, actions: SongActions, currentId: String?,
+    following: Boolean, onFollow: () -> Unit, onOpenAlbum: (String) -> Unit
+) {
     val all = (artist.popular + artist.latest).distinctBy { it.id }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
@@ -125,6 +143,11 @@ private fun ArtistContent(artist: Artist, actions: SongActions, currentId: Strin
                             "${formatCount(artist.subscribers)} abone",
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (following) FilledTonalButton(onClick = onFollow, modifier = Modifier.padding(top = 6.dp)) {
+                            Text("Takip ediliyor ✓")
+                        } else androidx.compose.material3.OutlinedButton(onClick = onFollow, modifier = Modifier.padding(top = 6.dp)) {
+                            Text("Takip et")
+                        }
                     }
                 }
             }
@@ -155,6 +178,20 @@ private fun ArtistContent(artist: Artist, actions: SongActions, currentId: Strin
             item { SectionTitle("Popüler") }
             itemsIndexed(artist.popular, key = { _, s -> "p" + s.id }) { i, song ->
                 SongRow(song, song.id == currentId, actions, onClick = { actions.play(artist.popular, i) })
+            }
+        }
+        if (artist.albums.isNotEmpty()) {
+            item { SectionTitle("Albümler") }
+            item {
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    itemsIndexed(artist.albums, key = { _, a -> a.url }) { _, a ->
+                        Column(Modifier.width(140.dp).clickable { onOpenAlbum(a.url) }) {
+                            Artwork(a.cover, Modifier.size(140.dp), corner = 10.dp)
+                            Text(a.title, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
+                        }
+                    }
+                }
             }
         }
         if (artist.latest.isNotEmpty()) {

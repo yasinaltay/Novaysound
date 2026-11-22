@@ -13,6 +13,11 @@ import com.novay.sound.data.spotify.SpotifyImporter
 import com.novay.sound.data.smart.SmartList
 import com.novay.sound.data.smart.Mood
 import com.novay.sound.data.radio.RadioRepository
+import com.novay.sound.data.follow.FollowRepository
+import com.novay.sound.data.follow.FollowedArtist
+import com.novay.sound.data.follow.NewReleaseWorker
+import com.novay.sound.data.share.PlaylistCodec
+import com.novay.sound.data.smart.SleepSound
 import com.novay.sound.data.smart.SmartPlaylists
 import com.novay.sound.data.spotify.SpotifyLink
 import com.novay.sound.data.youtube.YouTubeLink
@@ -56,7 +61,9 @@ class MainViewModel @Inject constructor(
     private val spotify: SpotifyImporter,
     private val smart: SmartPlaylists,
     private val radio: RadioRepository,
-    settingsRepo: SettingsRepository
+    private val follows: FollowRepository,
+    settingsRepo: SettingsRepository,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context
 ) : ViewModel() {
 
     val settings = settingsRepo.settings.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
@@ -128,6 +135,46 @@ class MainViewModel @Inject constructor(
         if (songs.isEmpty()) msg("Liste yüklenemedi") else player.play(songs.shuffled())
     }
 
+    // ---- Uyku sesleri ----
+    fun playSleepSound(sound: SleepSound) = viewModelScope.launch {
+        msg("${sound.emoji} ${sound.label} yükleniyor…")
+        val song = runCatching { youtube.search(sound.query, com.novay.sound.data.youtube.SearchFilter.VIDEOS).songs }
+            .getOrDefault(emptyList()).maxByOrNull { it.durationSec }
+        if (song == null) { msg("Ses bulunamadı"); return@launch }
+        player.play(listOf(song))
+        player.repeatOne()
+        if (!sleepTimer.state.value.active) {
+            sleepTimer.start(60)
+            msg("Uyku zamanlayıcısı 60 dakikaya kuruldu")
+        }
+    }
+
+    // ---- Sanatçı takibi ----
+    val followedArtists = follows.artists
+    fun toggleFollow(name: String, url: String, avatar: String?) {
+        if (follows.isFollowing(url)) { follows.unfollow(url); msg("$name takipten çıkarıldı") }
+        else {
+            follows.follow(FollowedArtist(name, url, avatar))
+            NewReleaseWorker.schedule(appContext)
+            msg("$name takip ediliyor: yeni şarkı çıkınca haber vereceğim")
+        }
+    }
+
+    // ---- Liste paylaşma ----
+    fun shareLink(name: String, songs: List<Song>): String = PlaylistCodec.encode(name, songs)
+
+    private fun importShared(text: String): Boolean {
+        val (name, songs) = PlaylistCodec.decode(text) ?: return false
+        viewModelScope.launch {
+            if (songs.isEmpty()) { msg("Paylaşılan liste boş"); return@launch }
+            val id = library.createPlaylist(name)
+            songs.forEach { library.addToPlaylist(id, it) }
+            player.play(songs)
+            msg("\"$name\" kitaplığa eklendi (${songs.size} şarkı)")
+        }
+        return true
+    }
+
     val radioFavorites = radio.favorites
     fun toggleRadioFavorite(station: Song) = radio.toggleFavorite(station)
 
@@ -177,6 +224,7 @@ class MainViewModel @Inject constructor(
 
     /** Paylaşılan / yapıştırılan metin YouTube linkiyse işle. Link değilse false. */
     fun handleText(text: String): Boolean {
+        if (text.contains(PlaylistCodec.PREFIX)) return importShared(text)
         spotify.parse(text)?.let { importSpotify(it); return true }
         val link = youtube.parseLink(text) ?: return false
         viewModelScope.launch {

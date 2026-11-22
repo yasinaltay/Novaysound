@@ -89,6 +89,14 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
 
+            <!-- Paylaşılan Novay Sound çalma listesi (QR kod / link) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="novaysound" android:host="playlist" />
+            </intent-filter>
+
             <!-- YouTube linklerini doğrudan bu uygulamayla açma -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

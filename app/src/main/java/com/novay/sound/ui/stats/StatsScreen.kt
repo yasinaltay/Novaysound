@@ -80,7 +80,8 @@ class StatsViewModel @Inject constructor(library: LibraryRepository) : ViewModel
 }
 
 @Composable
-fun StatsScreen(actions: SongActions, onBack: () -> Unit, onOpenArtist: (String) -> Unit, vm: StatsViewModel = hiltViewModel()) {
+fun StatsScreen(actions: SongActions, onBack: () -> Unit, onOpenArtist: (String) -> Unit, onOpenWrapped: () -> Unit = {},
+                vm: StatsViewModel = hiltViewModel()) {
     val period by vm.period.collectAsStateWithLifecycle()
     val totalMs by vm.totalMs.collectAsStateWithLifecycle()
     val plays by vm.plays.collectAsStateWithLifecycle()
@@ -91,7 +92,10 @@ fun StatsScreen(actions: SongActions, onBack: () -> Unit, onOpenArtist: (String)
         item {
             Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri") }
-                Text("İstatistikler", style = MaterialTheme.typography.titleLarge)
+                Text("İstatistikler", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                androidx.compose.material3.FilledTonalButton(onClick = onOpenWrapped, modifier = Modifier.padding(end = 12.dp)) {
+                    Text("✨ Yıllık özet")
+                }
             }
         }
         item {

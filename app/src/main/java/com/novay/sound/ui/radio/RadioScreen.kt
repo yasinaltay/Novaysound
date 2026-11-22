@@ -101,6 +101,7 @@ class RadioViewModel @Inject constructor(private val repo: RadioRepository) : Vi
 fun RadioScreen(
     currentId: String?,
     onPlay: (List<Song>, Int) -> Unit,
+    onSleepSound: (com.novay.sound.data.smart.SleepSound) -> Unit = {},
     vm: RadioViewModel = hiltViewModel()
 ) {
     val country by vm.country.collectAsStateWithLifecycle()
@@ -147,6 +148,17 @@ fun RadioScreen(
                 keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); vm.load(query) }),
                 modifier = Modifier.fillMaxWidth().padding(16.dp)
             )
+        }
+
+        if (query.isBlank()) {
+            item { SectionTitle("Uyku sesleri") }
+            item {
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    itemsIndexed(com.novay.sound.data.smart.SleepSound.entries.toList()) { _, s ->
+                        androidx.compose.material3.AssistChip(onClick = { onSleepSound(s) }, label = { Text("${s.emoji}  ${s.label}") })
+                    }
+                }
+            }
         }
 
         if (favorites.isNotEmpty() && query.isBlank()) {

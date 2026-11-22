@@ -92,8 +92,20 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repo: SettingsRepository,
     @PlaybackCache private val cache: SimpleCache,
-    @DownloadCache private val downloadCache: SimpleCache
+    @DownloadCache private val downloadCache: SimpleCache,
+    private val okHttp: okhttp3.OkHttpClient
 ) : ViewModel() {
+    fun setBtDevices(addrs: Set<String>) = viewModelScope.launch { repo.setBtDevices(addrs) }
+
+    val telegramResult = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    fun saveTelegram(token: String, chat: String) = viewModelScope.launch {
+        repo.setTelegram(token, chat)
+        telegramResult.value = "Gönderiliyor…"
+        val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.novay.sound.util.TelegramReporter.send(okHttp, token.trim(), chat.trim(), "✅ Novay Sound hata bildirimleri bu sohbete gelecek.")
+        }
+        telegramResult.value = if (ok) "Test mesajı gönderildi ✓" else "Gönderilemedi: token veya chat ID hatalı"
+    }
     val settings = repo.settings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
     val cacheBytes: Long get() = runCatching { cache.cacheSpace }.getOrDefault(0L)
     val downloadBytes: Long get() = runCatching { downloadCache.cacheSpace }.getOrDefault(0L)
@@ -192,6 +204,8 @@ fun SettingsScreen(
             ).forEach { t -> SwitchRow(t.title, t.subtitle, s.on(t)) { vm.setToggle(t, it) } }
         }
 
+        SettingsCard("Bluetooth") { BluetoothSection(s, vm) }
+
         SettingsCard("Uyku ve alarm") {
             SwitchRow(Toggle.AUTO_SLEEP.title, Toggle.AUTO_SLEEP.subtitle, s.on(Toggle.AUTO_SLEEP)) { vm.setToggle(Toggle.AUTO_SLEEP, it) }
             if (s.on(Toggle.AUTO_SLEEP)) {
@@ -242,6 +256,9 @@ fun SettingsScreen(
             var boost by remember(s.boostDb) { mutableFloatStateOf(s.boostDb.toFloat()) }
             Slider(value = boost, onValueChange = { boost = it }, valueRange = 0f..6f, steps = 5,
                 onValueChangeFinished = { vm.setInt("boost_db", boost.toInt()) })
+            SwitchRow(Toggle.EQ_PER_DEVICE.title, Toggle.EQ_PER_DEVICE.subtitle, s.on(Toggle.EQ_PER_DEVICE)) {
+                vm.setToggle(Toggle.EQ_PER_DEVICE, it)
+            }
             SwitchRow("SponsorBlock", "Klip videolarındaki konuşma, sponsor ve müzik dışı kısımları atla",
                 s.sponsorBlock, vm::setSponsorBlock)
         }
@@ -275,6 +292,7 @@ fun SettingsScreen(
             SwitchRow("Açılışta güncelleme denetle", "GitHub'da yeni sürüm varsa haber ver", s.autoUpdateCheck, vm::setAutoUpdate)
             LinkRow("Şimdi güncelleme denetle", "Sürüm ${BuildConfig.VERSION_NAME}", onCheckUpdate)
             LinkRow("Hata kaydı", "Çökme ve hata ayrıntıları", { showLog = true })
+            TelegramSection(s, vm)
         }
 
         Column(
@@ -385,4 +403,76 @@ private fun LinkRow(title: String, subtitle: String, onClick: () -> Unit) {
         }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+
+/** Araba/kulaklık bağlanınca otomatik çalma: izinler + cihaz seçimi. */
+@android.annotation.SuppressLint("MissingPermission")
+@Composable
+private fun BluetoothSection(s: AppSettings, vm: SettingsViewModel) {
+    val context = LocalContext.current
+    val btPermission = if (android.os.Build.VERSION.SDK_INT >= 31) android.Manifest.permission.BLUETOOTH_CONNECT else null
+    fun granted() = btPermission == null ||
+        androidx.core.content.ContextCompat.checkSelfPermission(context, btPermission) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    var hasPerm by remember { mutableStateOf(granted()) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasPerm = it }
+
+    SwitchRow(Toggle.AUTO_PLAY_BT.title, Toggle.AUTO_PLAY_BT.subtitle, s.on(Toggle.AUTO_PLAY_BT)) { on ->
+        vm.setToggle(Toggle.AUTO_PLAY_BT, on)
+        if (on) {
+            if (!hasPerm && btPermission != null) launcher.launch(btPermission)
+            // Arka planda başlatabilmek için pil optimizasyonundan muafiyet
+            val pm = context.getSystemService(android.os.PowerManager::class.java)
+            if (!pm.isIgnoringBatteryOptimizations(context.packageName)) {
+                runCatching {
+                    context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        android.net.Uri.parse("package:${context.packageName}")))
+                }
+            }
+        }
+    }
+    if (!s.on(Toggle.AUTO_PLAY_BT)) return
+    if (!hasPerm) {
+        TextButton(onClick = { btPermission?.let(launcher::launch) }) { Text("Bluetooth iznini ver") }
+        return
+    }
+    val devices = remember(hasPerm) {
+        runCatching {
+            context.getSystemService(android.bluetooth.BluetoothManager::class.java).adapter?.bondedDevices
+                ?.map { (it.name ?: it.address) to it.address }?.sortedBy { it.first }
+        }.getOrNull().orEmpty()
+    }
+    Text(if (s.btDevices.isEmpty()) "Seçim yok: tüm Bluetooth ses cihazlarında çalar" else "Sadece seçili cihazlarda çalar",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    devices.forEach { (name, addr) ->
+        Row(Modifier.fillMaxWidth().clickable {
+            vm.setBtDevices(if (addr in s.btDevices) s.btDevices - addr else s.btDevices + addr)
+        }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.Checkbox(checked = addr in s.btDevices, onCheckedChange = null)
+            Text(name, modifier = Modifier.padding(start = 8.dp))
+        }
+    }
+}
+
+/** Çökme olunca hata kaydını Telegram botuna gönder. */
+@Composable
+private fun TelegramSection(s: AppSettings, vm: SettingsViewModel) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    var token by rememberSaveable(s.telegramToken) { mutableStateOf(s.telegramToken) }
+    var chat by rememberSaveable(s.telegramChatId) { mutableStateOf(s.telegramChatId) }
+    val result by vm.telegramResult.collectAsStateWithLifecycle()
+    LinkRow("Telegram hata bildirimi",
+        if (s.telegramToken.isNotBlank()) "Açık: çökmeler Telegram'a gelir" else "Kapalı") { open = !open }
+    if (!open) return
+    Text("1) Telegram'da @BotFather'a /newbot yaz, verdiği token'ı yapıştır.\n2) Botuna bir mesaj at, sonra @userinfobot'tan kendi ID'ni al.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    androidx.compose.material3.OutlinedTextField(token, { token = it }, label = { Text("Bot token") }, singleLine = true,
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+    androidx.compose.material3.OutlinedTextField(chat, { chat = it }, label = { Text("Chat ID") }, singleLine = true,
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = { vm.saveTelegram(token, chat) }, enabled = token.isNotBlank() && chat.isNotBlank()) { Text("Kaydet ve test et") }
+        if (s.telegramToken.isNotBlank()) TextButton(onClick = { token = ""; chat = ""; vm.saveTelegram("", "") }) { Text("Kapat") }
+    }
+    result?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 }
