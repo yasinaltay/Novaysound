@@ -27,13 +27,15 @@ class WidgetUpdater @Inject constructor(@ApplicationContext private val context:
     private var job: Job? = null
     private var lastArtUrl: String? = null
 
-    fun update(song: Song?, playing: Boolean) {
+    /** [upcoming]: sıradaki şarkılar (oynatıcıdaki gerçek sıra numarasıyla), büyük widget için. */
+    fun update(song: Song?, playing: Boolean, upcoming: List<Pair<Int, Song>> = emptyList()) {
         job?.cancel()
         job = scope.launch {
             runCatching {
                 val manager = GlanceAppWidgetManager(context)
-                val ids = manager.getGlanceIds(NovayWidget::class.java)
-                if (ids.isEmpty()) return@launch
+                val widgets = listOf(NovayWidget::class.java, NovayWidgetLarge::class.java, NovayWidgetClear::class.java)
+                    .associateWith { manager.getGlanceIds(it) }
+                if (widgets.values.all { it.isEmpty() }) return@launch
                 val artFile = File(context.filesDir, "widget_art.png")
                 val url = song?.thumbnailUrl
                 if (url != null && url != lastArtUrl) {
@@ -43,15 +45,23 @@ class WidgetUpdater @Inject constructor(@ApplicationContext private val context:
                         lastArtUrl = url
                     }
                 }
-                ids.forEach { id ->
+                val queueText = upcoming.take(6).joinToString("\n") { (i, s) ->
+                    "$i\t${s.title.replace('\t', ' ')}\t${s.artist.replace('\t', ' ')}"
+                }
+                widgets.forEach { (cls, ids) -> ids.forEach { id ->
                     updateAppWidgetState(context, id) { p ->
+                        p[WidgetKeys.QUEUE] = queueText
                         p[WidgetKeys.TITLE] = song?.title ?: "Novay Sound"
                         p[WidgetKeys.ARTIST] = song?.artist ?: "Çalmak için dokun"
                         p[WidgetKeys.PLAYING] = playing
                         if (song != null && artFile.exists()) p[WidgetKeys.ART] = artFile.absolutePath else p.remove(WidgetKeys.ART)
                     }
-                    NovayWidget().update(context, id)
-                }
+                    when (cls) {
+                        NovayWidgetLarge::class.java -> NovayWidgetLarge().update(context, id)
+                        NovayWidgetClear::class.java -> NovayWidgetClear().update(context, id)
+                        else -> NovayWidget().update(context, id)
+                    }
+                } }
             }
         }
     }

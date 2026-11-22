@@ -64,6 +64,7 @@ class MainViewModel @Inject constructor(
     private val follows: FollowRepository,
     private val settingsRepo: SettingsRepository,
     private val translator: com.novay.sound.data.learn.LyricsTranslator,
+    private val generator: com.novay.sound.data.smart.PlaylistGenerator,
     private val wordBook: com.novay.sound.data.learn.WordBook,
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context
 ) : ViewModel() {
@@ -109,6 +110,39 @@ class MainViewModel @Inject constructor(
     }
 
     fun isLiked(id: String): Flow<Boolean> = library.isLiked(id)
+
+    // ---- Şarkı bulma araçları ----
+    /** Ana ekrandan "Sözden bul" seçilince arama ekranı bu filtreyle açılır. */
+    val pendingSearchFilter = MutableStateFlow<com.novay.sound.data.youtube.SearchFilter?>(null)
+    fun openLyricsSearch() {
+        pendingSearchFilter.value = com.novay.sound.data.youtube.SearchFilter.LYRICS
+        _navigation.tryEmit("search")
+    }
+
+    fun makeDurationPlaylist(minutes: Int) = viewModelScope.launch {
+        msg("⏱ $minutes dakikalık liste hazırlanıyor…")
+        val songs = runCatching { generator.byDuration(minutes) }.getOrDefault(emptyList())
+        if (songs.isEmpty()) { msg("Liste oluşturulamadı"); return@launch }
+        val total = songs.sumOf { it.durationSec } / 60
+        val id = library.createPlaylist("⏱ $minutes dk liste")
+        songs.forEach { library.addToPlaylist(id, it) }
+        player.play(songs)
+        msg("${songs.size} şarkı, toplam $total dk – kitaplığa kaydedildi")
+    }
+
+    fun multiArtistRadio(names: List<String>) = viewModelScope.launch {
+        msg("📻 ${names.joinToString(" + ")} radyosu hazırlanıyor…")
+        val songs = runCatching { generator.multiArtist(names) }.getOrDefault(emptyList())
+        if (songs.isEmpty()) msg("Şarkı bulunamadı") else player.play(songs)
+    }
+
+    /** Çoklu sanatçı seçicisi için öneriler: en çok dinlediklerin + favorilerindeki sanatçılar. */
+    suspend fun artistCandidates(): List<String> {
+        val fromFavs = library.getFavorites().map { it.artist }
+        val fromRecent = library.getRecent().map { it.artist }
+        return (fromFavs + fromRecent).filter { it.isNotBlank() && !it.startsWith("📻") }
+            .groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key }.take(20)
+    }
 
     // ---- Söz çevirisi + öğrenme modu ----
     val translationDownloading = translator.downloading

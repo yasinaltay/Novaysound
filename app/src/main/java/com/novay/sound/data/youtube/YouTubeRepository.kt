@@ -33,7 +33,8 @@ enum class SearchFilter(val value: String) {
     SONGS(YoutubeSearchQueryHandlerFactory.MUSIC_SONGS),   // YouTube Music şarkıları
     VIDEOS(YoutubeSearchQueryHandlerFactory.VIDEOS),       // normal YouTube videoları
     ARTISTS(YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS), // YouTube Music sanatçıları
-    ALBUMS(YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS)    // YouTube Music albümleri
+    ALBUMS(YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS),   // YouTube Music albümleri
+    LYRICS(YoutubeSearchQueryHandlerFactory.MUSIC_SONGS)     // sözden şarkı bulma (LyricsFinder)
 }
 
 data class AlbumItem(val title: String, val url: String, val artist: String, val cover: String?, val count: Long)

@@ -88,7 +88,8 @@ sealed interface SearchUi {
         val canLoadMore: Boolean,
         val loadingMore: Boolean = false,
         val artists: List<ArtistItem> = emptyList(),
-        val albums: List<com.novay.sound.data.youtube.AlbumItem> = emptyList()
+        val albums: List<com.novay.sound.data.youtube.AlbumItem> = emptyList(),
+        val verified: Set<String> = emptySet()   // sözden bulmada sözleri gerçekten eşleşenler
     ) : SearchUi
     data class Error(val message: String) : SearchUi
 }
@@ -97,7 +98,8 @@ sealed interface SearchUi {
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val youtube: YouTubeRepository,
-    private val settings: SettingsRepository
+    private val settings: SettingsRepository,
+    private val lyricsFinder: com.novay.sound.data.lyrics.LyricsFinder
 ) : ViewModel() {
 
     val history = settings.searchHistory.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -111,7 +113,7 @@ class SearchViewModel @Inject constructor(
     val ui = _ui.asStateFlow()
 
     val suggestions = query.debounce(300).mapLatest { q ->
-        if (q.length < 2 || youtube.parseLink(q) != null) emptyList() else youtube.suggestions(q)
+        if (q.length < 2 || filter.value == SearchFilter.LYRICS || youtube.parseLink(q) != null) emptyList() else youtube.suggestions(q)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var page: SearchPage? = null
@@ -127,7 +129,11 @@ class SearchViewModel @Inject constructor(
         job = viewModelScope.launch {
             _ui.value = SearchUi.Loading
             try {
-                if (filter.value == SearchFilter.ALBUMS) {
+                if (filter.value == SearchFilter.LYRICS) {
+                    page = null
+                    val m = lyricsFinder.find(q.trim())
+                    _ui.value = SearchUi.Results(m.songs, false, verified = m.verified)
+                } else if (filter.value == SearchFilter.ALBUMS) {
                     page = null
                     _ui.value = SearchUi.Results(emptyList(), false, albums = youtube.searchAlbums(q.trim()))
                 } else if (filter.value == SearchFilter.ARTISTS) {
@@ -180,6 +186,8 @@ fun SearchScreen(
     onLink: (String) -> Boolean,
     onOpenArtist: (String) -> Unit,
     onOpenAlbum: (String) -> Unit = {},
+    requestedFilter: SearchFilter? = null,
+    onFilterConsumed: () -> Unit = {},
     vm: SearchViewModel = hiltViewModel()
 ) {
     val query by vm.query.collectAsStateWithLifecycle()
@@ -197,12 +205,18 @@ fun SearchScreen(
     }
 
     LaunchedEffect(Unit) { if (query.isEmpty()) focus.requestFocus() }
+    LaunchedEffect(requestedFilter) {
+        requestedFilter?.let { vm.setFilter(it); onFilterConsumed(); focus.requestFocus() }
+    }
 
     Column(Modifier.fillMaxSize()) {
         OutlinedTextField(
             value = query,
             onValueChange = { vm.query.value = it },
-            placeholder = { Text("Şarkı, sanatçı veya link", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            placeholder = {
+                Text(if (filter == SearchFilter.LYRICS) "Aklında kalan sözü yaz…" else "Şarkı, sanatçı veya link",
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            },
             leadingIcon = { Icon(Icons.Default.Search, null) },
             trailingIcon = {
                 Row {
@@ -236,6 +250,8 @@ fun SearchScreen(
                 label = { Text("Sanatçılar") })
             FilterChip(selected = filter == SearchFilter.ALBUMS, onClick = { vm.setFilter(SearchFilter.ALBUMS) },
                 label = { Text("Albümler") })
+            FilterChip(selected = filter == SearchFilter.LYRICS, onClick = { vm.setFilter(SearchFilter.LYRICS) },
+                label = { Text("🎤 Sözden bul") })
         }
 
         when (val state = ui) {
@@ -317,7 +333,18 @@ fun SearchScreen(
                             }
                         }
                     }
-                    itemsIndexed(state.songs, key = { _, s -> s.id }) { _, song ->
+                    if (state.verified.isNotEmpty()) item {
+                        Text("✓ Sözleri eşleşenler", style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                    } else if (filter == SearchFilter.LYRICS && state.songs.isNotEmpty()) item {
+                        Text("Sözleri doğrulanamadı, olası şarkılar:", style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                    }
+                    itemsIndexed(state.songs, key = { _, s -> s.id }) { i, song ->
+                        if (state.verified.isNotEmpty() && i == state.verified.size) Text(
+                            "Diğer olasılıklar", style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
                         // Arama sonucuna dokununca: şarkı + benzerleri (radyo)
                         SongRow(song, song.id == currentId, actions, onClick = { actions.radio(song) })
                     }

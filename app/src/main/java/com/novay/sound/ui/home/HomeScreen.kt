@@ -30,6 +30,13 @@ import com.novay.sound.data.settings.SettingsRepository
 import com.novay.sound.data.settings.Toggle
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AssistChip
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -93,6 +100,14 @@ class HomeViewModel @Inject constructor(
     }
 }
 
+/** Ana ekrandaki "Araçlar" bölümünün eylemleri. */
+data class HomeTools(
+    val onLyricsSearch: () -> Unit = {},
+    val onDuration: (Int) -> Unit = {},
+    val onMultiArtist: (List<String>) -> Unit = {},
+    val loadArtists: suspend () -> List<String> = { emptyList() }
+)
+
 @Composable
 fun HomeScreen(
     actions: SongActions,
@@ -102,6 +117,7 @@ fun HomeScreen(
     onOpenSmart: (SmartList) -> Unit,
     onOpenCar: () -> Unit,
     onMood: (Mood) -> Unit,
+    tools: HomeTools = HomeTools(),
     vm: HomeViewModel = hiltViewModel()
 ) {
     val recent by vm.recent.collectAsStateWithLifecycle()
@@ -110,6 +126,8 @@ fun HomeScreen(
     val quick by vm.quickPicks.collectAsStateWithLifecycle()
     val trending by vm.trending.collectAsStateWithLifecycle()
     val s by vm.settings.collectAsStateWithLifecycle()
+    var durationDialog by rememberSaveable { mutableStateOf(false) }
+    var artistDialog by rememberSaveable { mutableStateOf(false) }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
         item {
@@ -138,6 +156,15 @@ fun HomeScreen(
         if (s.on(Toggle.SHOW_SMART) && (recent.isNotEmpty() || favorites.isNotEmpty())) {
             item { SectionTitle("Senin için") }
             item { SmartListCards(onOpenSmart) }
+        }
+
+        item { SectionTitle("Araçlar") }
+        item {
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item { AssistChip(onClick = tools.onLyricsSearch, label = { Text("🎤  Sözden şarkı bul") }) }
+                item { AssistChip(onClick = { durationDialog = true }, label = { Text("⏱  Süreye göre liste") }) }
+                item { AssistChip(onClick = { artistDialog = true }, label = { Text("📻  Çoklu sanatçı radyosu") }) }
+            }
         }
 
         if (s.on(Toggle.SHOW_MOODS)) {
@@ -169,6 +196,10 @@ fun HomeScreen(
             }
         }
     }
+
+    if (durationDialog) DurationDialog(onDismiss = { durationDialog = false }, onCreate = { durationDialog = false; tools.onDuration(it) })
+    if (artistDialog) MultiArtistDialog(tools.loadArtists, onDismiss = { artistDialog = false },
+        onStart = { artistDialog = false; tools.onMultiArtist(it) })
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.horizontalSection(
@@ -186,4 +217,67 @@ private fun androidx.compose.foundation.lazy.LazyListScope.horizontalSection(
             }
         }
     }
+}
+
+@Composable
+private fun DurationDialog(onDismiss: () -> Unit, onCreate: (Int) -> Unit) {
+    var minutes by remember { mutableFloatStateOf(45f) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Süreye göre liste") },
+        text = {
+            Column {
+                Text("${minutes.toInt()} dakika", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                androidx.compose.material3.Slider(value = minutes, onValueChange = { minutes = it }, valueRange = 15f..180f, steps = 10)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(30, 45, 60, 90).forEach { m ->
+                        androidx.compose.material3.FilterChip(selected = minutes.toInt() == m, onClick = { minutes = m.toFloat() },
+                            label = { Text("$m") })
+                    }
+                }
+                Text("Favorilerin, son dinlediklerin ve benzerlerinden hazırlanır, kitaplığa kaydedilir.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp))
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { onCreate(minutes.toInt()) }) { Text("Hazırla ve çal") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("İptal") } }
+    )
+}
+
+@Composable
+private fun MultiArtistDialog(load: suspend () -> List<String>, onDismiss: () -> Unit, onStart: (List<String>) -> Unit) {
+    val candidates by androidx.compose.runtime.produceState(emptyList<String>()) { value = load() }
+    val selected = remember { androidx.compose.runtime.mutableStateListOf<String>() }
+    var custom by remember { mutableStateOf("") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Çoklu sanatçı radyosu") },
+        text = {
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                Text("2-5 sanatçı seç (${selected.size} seçili)", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    (selected.filter { it !in candidates } + candidates).forEach { a ->
+                        androidx.compose.material3.FilterChip(
+                            selected = a in selected,
+                            onClick = { if (a in selected) selected.remove(a) else if (selected.size < 5) selected.add(a) },
+                            label = { Text(a, maxLines = 1) }
+                        )
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.OutlinedTextField(custom, { custom = it }, singleLine = true,
+                        label = { Text("Başka sanatçı ekle") }, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.TextButton(enabled = custom.isNotBlank() && selected.size < 5, onClick = {
+                        if (custom.trim() !in selected) selected.add(custom.trim()); custom = ""
+                    }) { Text("Ekle") }
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(enabled = selected.size >= 2, onClick = { onStart(selected.toList()) }) { Text("Radyoyu başlat") }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("İptal") } }
+    )
 }

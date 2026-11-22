@@ -69,6 +69,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import com.novay.sound.ui.home.HomeScreen
+import com.novay.sound.ui.home.HomeTools
 import com.novay.sound.ui.library.LibraryScreen
 import com.novay.sound.ui.library.PlaylistScreen
 import com.novay.sound.ui.player.FullPlayer
@@ -103,9 +104,15 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
 
         val downloads by vm.downloadItems.collectAsStateWithLifecycle()
         val followed by vm.followedArtists.collectAsStateWithLifecycle()
+        val pendingFilter by vm.pendingSearchFilter.collectAsStateWithLifecycle()
 
         LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
-        LaunchedEffect(Unit) { vm.navigation.collect { route -> showPlayer = false; nav.navigate(route) } }
+        LaunchedEffect(Unit) {
+            vm.navigation.collect { route ->
+                showPlayer = false
+                if (route in setOf("home", "search", "radio", "library")) nav.navigateTab(route) else nav.navigate(route)
+            }
+        }
         NotificationPermission()
 
         CompositionLocalProvider(
@@ -131,11 +138,18 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                             onOpenSettings = { nav.navigate("settings") },
                             onOpenSmart = { nav.navigate("smart/${it.name}") },
                             onOpenCar = { nav.navigate("car") },
-                            onMood = vm::playMood)
+                            onMood = vm::playMood,
+                            tools = HomeTools(
+                                onLyricsSearch = vm::openLyricsSearch,
+                                onDuration = vm::makeDurationPlaylist,
+                                onMultiArtist = vm::multiArtistRadio,
+                                loadArtists = vm::artistCandidates
+                            ))
                     }
                     composable("search") {
                         SearchScreen(actions, currentId, onLink = vm::handleText, onOpenArtist = vm::openArtistUrl,
-                            onOpenAlbum = { nav.navigate("album?url=${android.net.Uri.encode(it)}") })
+                            onOpenAlbum = { nav.navigate("album?url=${android.net.Uri.encode(it)}") },
+                            requestedFilter = pendingFilter, onFilterConsumed = { vm.pendingSearchFilter.value = null })
                     }
                     composable("radio") { RadioScreen(currentId, onPlay = actions.play, onSleepSound = vm::playSleepSound) }
                     composable("library") {

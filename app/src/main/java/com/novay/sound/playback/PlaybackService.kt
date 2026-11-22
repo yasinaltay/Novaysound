@@ -317,6 +317,13 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /** Büyük widget için sıradaki şarkılar (oynatıcıdaki sıra numarasıyla). */
+    private fun upcoming(): List<Pair<Int, Song>> {
+        val start = player.currentMediaItemIndex + 1
+        return (start until minOf(player.mediaItemCount, start + 6))
+            .mapNotNull { i -> player.getMediaItemAt(i).toSongOrNull()?.let { i to it } }
+    }
+
     // ======================= Otomatik uyku =======================
 
     /** Gece (ayarlanan saatten sabah 5'e kadar) çalma başlarsa, o gece bir kez zamanlayıcı kur. */
@@ -440,7 +447,7 @@ class PlaybackService : MediaLibraryService() {
                 startLockLyrics(s)
             }
             maybeExtendRadio()
-            widget.update(song, player.isPlaying)
+            widget.update(song, player.isPlaying, upcoming())
             saveQueue()
         }
 
@@ -463,7 +470,7 @@ class PlaybackService : MediaLibraryService() {
             if (!isPlaying && sleepTimer.state.value.endOfSong && player.playbackState == Player.STATE_READY &&
                 !player.playWhenReady
             ) sleepTimer.cancel()
-            widget.update(player.currentMediaItem?.toSongOrNull(), isPlaying)
+            widget.update(player.currentMediaItem?.toSongOrNull(), isPlaying, upcoming())
             if (!isPlaying) saveQueue()
         }
 

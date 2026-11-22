@@ -54,13 +54,25 @@ object WidgetKeys {
     val ARTIST = stringPreferencesKey("artist")
     val ART = stringPreferencesKey("art_path")
     val PLAYING = booleanPreferencesKey("playing")
+    val QUEUE = stringPreferencesKey("queue")   // "index\tbaşlık\tsanatçı" satırları
 }
 
-class NovayWidget : GlanceAppWidget() {
+val IndexKey = ActionParameters.Key<Int>("index")
+
+enum class WidgetStyle { COMPACT, LARGE, CLEAR }
+
+/** Küçük widget (koyu kart). */
+class NovayWidget : BaseNovayWidget(WidgetStyle.COMPACT)
+/** Büyük widget: çalan şarkı + sıradakiler + favoriler. */
+class NovayWidgetLarge : BaseNovayWidget(WidgetStyle.LARGE)
+/** Şeffaf widget: duvar kâğıdıyla bütünleşir. */
+class NovayWidgetClear : BaseNovayWidget(WidgetStyle.CLEAR)
+
+open class BaseNovayWidget(private val style: WidgetStyle) : GlanceAppWidget() {
     override val stateDefinition: GlanceStateDefinition<*> = PreferencesGlanceStateDefinition
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent { Content() }
+        provideContent { if (style == WidgetStyle.LARGE) LargeContent() else Content() }
     }
 
     @Composable
@@ -73,9 +85,10 @@ class NovayWidget : GlanceAppWidget() {
         val white = ColorProvider(Color.White)
         val grey = ColorProvider(Color(0xFFB4B6BE))
 
+        val bg = if (style == WidgetStyle.CLEAR) GlanceModifier else GlanceModifier.background(Color(0xFF141418))
         Row(
             modifier = GlanceModifier.fillMaxSize()
-                .background(Color(0xFF141418))
+                .then(bg)
                 .cornerRadius(24.dp)
                 .padding(8.dp)
                 .clickable(actionStartActivity<MainActivity>()),
@@ -100,6 +113,40 @@ class NovayWidget : GlanceAppWidget() {
     }
 
     @Composable
+    private fun LargeContent() {
+        val prefs = currentState<Preferences>()
+        val queue = prefs[WidgetKeys.QUEUE].orEmpty().lines().mapNotNull { l ->
+            l.split('\t').takeIf { it.size >= 3 }?.let { Triple(it[0].toIntOrNull() ?: return@let null, it[1], it[2]) }
+        }
+        val white = ColorProvider(Color.White)
+        val grey = ColorProvider(Color(0xFFB4B6BE))
+        Column(
+            modifier = GlanceModifier.fillMaxSize().background(Color(0xFF141418)).cornerRadius(24.dp).padding(10.dp)
+        ) {
+            Content()
+            Text("Sıradakiler", style = TextStyle(color = grey, fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                modifier = GlanceModifier.padding(start = 6.dp, top = 6.dp, bottom = 2.dp))
+            if (queue.isEmpty()) Text("Sıra boş", style = TextStyle(color = grey, fontSize = 12.sp), modifier = GlanceModifier.padding(6.dp))
+            androidx.glance.appwidget.lazy.LazyColumn(modifier = GlanceModifier.defaultWeight()) {
+                items(queue.size) { i ->
+                    val (index, title, artist) = queue[i]
+                    Column(
+                        GlanceModifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)
+                            .clickable(actionRunCallback<SkipToAction>(androidx.glance.action.actionParametersOf(IndexKey to index)))
+                    ) {
+                        Text(title, maxLines = 1, style = TextStyle(color = white, fontSize = 13.sp))
+                        Text(artist, maxLines = 1, style = TextStyle(color = grey, fontSize = 11.sp))
+                    }
+                }
+            }
+            Row(GlanceModifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("♥  Favorileri karıştır", style = TextStyle(color = ColorProvider(Color(0xFFFF6A8A)), fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                    modifier = GlanceModifier.padding(6.dp).clickable(actionRunCallback<ShuffleFavoritesAction>()))
+            }
+        }
+    }
+
+    @Composable
     private fun WidgetButton(icon: Int, desc: String, action: androidx.glance.action.Action) {
         Image(
             provider = ImageProvider(icon),
@@ -112,12 +159,21 @@ class NovayWidget : GlanceAppWidget() {
 class NovayWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = NovayWidget()
 }
+class NovayWidgetLargeReceiver : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget = NovayWidgetLarge()
+}
+class NovayWidgetClearReceiver : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget = NovayWidgetClear()
+}
 
 // ---- Widget butonları: PlayerConnection üzerinden servise komut ----
 
 @EntryPoint
 @InstallIn(SingletonComponent::class)
-interface WidgetDeps { fun player(): PlayerConnection }
+interface WidgetDeps {
+    fun player(): PlayerConnection
+    fun library(): com.novay.sound.data.repository.LibraryRepository
+}
 
 private suspend fun withPlayer(context: Context, block: (PlayerConnection) -> Unit) =
     withContext(Dispatchers.Main) {
@@ -137,4 +193,19 @@ class NextAction : ActionCallback {
 class PrevAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) =
         withPlayer(context) { it.previous() }
+}
+
+class SkipToAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val index = parameters[IndexKey] ?: return
+        withPlayer(context) { it.skipTo(index) }
+    }
+}
+
+class ShuffleFavoritesAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val deps = EntryPointAccessors.fromApplication(context.applicationContext, WidgetDeps::class.java)
+        val favs = deps.library().getFavorites().shuffled()
+        if (favs.isNotEmpty()) withPlayer(context) { it.play(favs) }
+    }
 }
