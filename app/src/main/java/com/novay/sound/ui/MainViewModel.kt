@@ -11,6 +11,7 @@ import com.novay.sound.data.settings.AppSettings
 import com.novay.sound.data.settings.SettingsRepository
 import com.novay.sound.data.spotify.SpotifyImporter
 import com.novay.sound.data.smart.SmartList
+import com.novay.sound.data.smart.Mood
 import com.novay.sound.data.smart.SmartPlaylists
 import com.novay.sound.data.spotify.SpotifyLink
 import com.novay.sound.data.youtube.YouTubeLink
@@ -116,6 +117,13 @@ class MainViewModel @Inject constructor(
         val url = song.artistUrl ?: youtube.findArtistUrl(song.artist)
         if (url == null) { msg("Sanatçı bulunamadı"); return@launch }
         openArtistUrl(url)
+    }
+
+    /** Ruh hali listesi: YouTube Music'te ara, karıştır, çal (sonsuz radyo devam ettirir). */
+    fun playMood(mood: Mood) = viewModelScope.launch {
+        msg("${mood.emoji} ${mood.label} hazırlanıyor…")
+        val songs = runCatching { youtube.search(mood.query).songs }.getOrDefault(emptyList())
+        if (songs.isEmpty()) msg("Liste yüklenemedi") else player.play(songs.shuffled())
     }
 
     fun navigateTo(route: String) { _navigation.tryEmit(route) }

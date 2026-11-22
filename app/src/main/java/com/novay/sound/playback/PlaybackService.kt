@@ -33,6 +33,11 @@ import com.novay.sound.data.settings.SettingsRepository
 import com.novay.sound.data.youtube.SponsorBlockRepository
 import com.novay.sound.data.youtube.YouTubeRepository
 import com.novay.sound.util.CrashLogger
+import com.novay.sound.util.FeatureFlags
+import com.novay.sound.data.settings.Toggle
+import com.novay.sound.data.lyrics.LyricsRepository
+import com.novay.sound.data.smart.SmartList
+import com.novay.sound.data.smart.SmartPlaylists
 import com.novay.sound.widget.WidgetUpdater
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -56,6 +61,8 @@ class PlaybackService : MediaLibraryService() {
 
     companion object {
         const val CMD_LIKE = "novay.LIKE"
+        const val ACTION_ALARM = "com.novay.sound.ALARM"
+        private const val ALARM_NOTIFICATION = 77
     }
 
     @Inject lateinit var dataSourceFactory: AudioDataSourceFactory
@@ -68,12 +75,19 @@ class PlaybackService : MediaLibraryService() {
     @Inject lateinit var settings: SettingsRepository
     @Inject lateinit var widget: WidgetUpdater
     @Inject lateinit var queueStore: QueueStore
+    @Inject lateinit var flags: FeatureFlags
+    @Inject lateinit var lyricsRepo: LyricsRepository
+    @Inject lateinit var smart: SmartPlaylists
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var player: ExoPlayer
     private var session: MediaLibrarySession? = null
 
     private var radioJob: Job? = null
+    private var lyricJob: Job? = null
+    private var replacingForLyrics = false
+    private var autoSleepNight: String? = null
+    private var alarmPending = false
     private var skipJob: Job? = null
     private var fadeJob: Job? = null
     private val retryCount = mutableMapOf<String, Int>()
@@ -131,6 +145,7 @@ class PlaybackService : MediaLibraryService() {
             settings.settings.collect {
                 sponsorEnabled = it.sponsorBlock
                 crossfader.seconds = it.crossfadeSec
+                autoRadio = it.on(Toggle.AUTO_RADIO)
             }
         }
         // Konumu çalarken 15 sn'de bir kaydet
@@ -145,6 +160,46 @@ class PlaybackService : MediaLibraryService() {
         scope.launch { sleepTimer.fire.collect { fadeOutAndPause() } }
         scope.launch {
             sleepTimer.state.collect { player.pauseAtEndOfMediaItems = it.endOfSong }
+        }
+    }
+
+    /** Müzikli alarm: AlarmReceiver servisi bu eylemle başlatır. */
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_ALARM) {
+            startAlarm()
+            return START_NOT_STICKY
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    private fun startAlarm() {
+        val nm = getSystemService(android.app.NotificationManager::class.java)
+        nm.createNotificationChannel(
+            android.app.NotificationChannel("alarm", "Alarm", android.app.NotificationManager.IMPORTANCE_HIGH)
+        )
+        val n = androidx.core.app.NotificationCompat.Builder(this, "alarm")
+            .setSmallIcon(R.drawable.ic_stat_music)
+            .setContentTitle("Günaydın ☀️")
+            .setContentText("Novay Sound alarmı başlıyor…")
+            .setOngoing(true)
+            .build()
+        androidx.core.app.ServiceCompat.startForeground(
+            this, ALARM_NOTIFICATION, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        )
+        alarmPending = true
+        scope.launch {
+            val s = flags.current
+            val songs = (if (s.alarmSource == "DISCOVER") runCatching { smart.songs(SmartList.DISCOVER) }.getOrDefault(emptyList())
+            else library.getFavorites().shuffled())
+                .ifEmpty { library.getRecent() }
+                .ifEmpty { runCatching { youtube.trending() }.getOrDefault(emptyList()) }
+            if (songs.isEmpty()) { stopForeground(STOP_FOREGROUND_REMOVE); return@launch }
+            player.volume = 0.1f
+            player.setMediaItems(songs.take(60).map { it.toMediaItem() })
+            player.prepare()
+            player.play()
+            // Sesi 60 sn'de yavaşça aç
+            for (i in 1..30) { delay(2000); player.volume = 0.1f + 0.9f * i / 30f }
         }
     }
 
@@ -230,6 +285,54 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    // ======================= Otomatik uyku =======================
+
+    /** Gece (ayarlanan saatten sabah 5'e kadar) çalma başlarsa, o gece bir kez zamanlayıcı kur. */
+    private fun maybeAutoSleep() {
+        val s = flags.current
+        if (!s.on(Toggle.AUTO_SLEEP) || sleepTimer.state.value.active) return
+        val cal = java.util.Calendar.getInstance()
+        val h = cal.get(java.util.Calendar.HOUR_OF_DAY)
+        if (!(h >= s.autoSleepHour || h < 5)) return
+        if (h < 5) cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
+        val night = "${cal.get(java.util.Calendar.YEAR)}-${cal.get(java.util.Calendar.DAY_OF_YEAR)}"
+        if (night == autoSleepNight) return
+        autoSleepNight = night
+        sleepTimer.start(s.autoSleepMinutes)
+    }
+
+    // ======================= Kilit ekranı sözleri (deneysel) =======================
+
+    private fun startLockLyrics(song: Song) {
+        lyricJob?.cancel()
+        if (!flags.on(Toggle.LOCK_LYRICS)) return
+        lyricJob = scope.launch {
+            val lyrics = runCatching { lyricsRepo.get(song) }.getOrNull()?.takeIf { it.isSynced } ?: return@launch
+            var last = -1
+            while (isActive && player.currentMediaItem?.videoId == song.id && flags.on(Toggle.LOCK_LYRICS)) {
+                val idx = lyrics.synced.indexOfLast { it.timeMs <= player.currentPosition + 300 }
+                if (idx >= 0 && idx != last) {
+                    last = idx
+                    showLyricLine(lyrics.synced[idx].text.ifBlank { "♪" })
+                }
+                delay(400)
+            }
+        }
+    }
+
+    private fun showLyricLine(line: String) {
+        val item = player.currentMediaItem ?: return
+        replacingForLyrics = true
+        try {
+            player.replaceMediaItem(
+                player.currentMediaItemIndex,
+                item.buildUpon().setMediaMetadata(item.mediaMetadata.buildUpon().setArtist("♪ $line").build()).build()
+            )
+        } finally {
+            replacingForLyrics = false
+        }
+    }
+
     // ======================= SponsorBlock =======================
 
     private fun loadSegments(id: String) {
@@ -272,7 +375,7 @@ class PlaybackService : MediaLibraryService() {
         pauseListenClock()
         val song = trackedSong
         val ms = listenedMs
-        if (song != null && (ms >= 30_000 || (song.durationSec > 0 && ms >= song.durationSec * 500))) {
+        if (song != null && flags.on(Toggle.RECORD_STATS) && (ms >= 30_000 || (song.durationSec > 0 && ms >= song.durationSec * 500))) {
             scope.launch { runCatching { library.recordPlay(song.id, ms) } }
         }
         listenedMs = 0
@@ -283,6 +386,9 @@ class PlaybackService : MediaLibraryService() {
     private inner class PlayerListener : Player.Listener {
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            // Kilit ekranı sözleri için yapılan meta güncellemesi: şarkı değişmedi
+            if (replacingForLyrics || (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED &&
+                    mediaItem != null && mediaItem.videoId == currentId.value)) return
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) crossfader.onAutoTransition() else crossfader.cancel()
             flushListen()
             val song = mediaItem?.toSongOrNull()
@@ -292,6 +398,7 @@ class PlaybackService : MediaLibraryService() {
             song?.let { s ->
                 scope.launch { library.onPlayed(s) }
                 loadSegments(s.id)
+                startLockLyrics(s)
             }
             maybeExtendRadio()
             widget.update(song, player.isPlaying)
@@ -303,6 +410,13 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) {
+                maybeAutoSleep()
+                if (alarmPending) {
+                    alarmPending = false
+                    scope.launch { delay(3000); getSystemService(android.app.NotificationManager::class.java).cancel(ALARM_NOTIFICATION) }
+                }
+            }
             if (isPlaying) crossfader.onMainPlaying()
             else if (!crossfader.isHandoff && player.playbackState != Player.STATE_BUFFERING) crossfader.cancel()
             if (isPlaying) playingSince = SystemClock.elapsedRealtime() else pauseListenClock()

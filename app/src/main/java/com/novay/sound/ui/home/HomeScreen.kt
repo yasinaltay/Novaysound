@@ -24,6 +24,12 @@ import com.novay.sound.ui.theme.BrandTitleStyle
 import com.novay.sound.ui.components.CastButton
 import com.novay.sound.ui.smart.SmartListCards
 import com.novay.sound.data.smart.SmartList
+import com.novay.sound.data.smart.Mood
+import com.novay.sound.data.settings.AppSettings
+import com.novay.sound.data.settings.SettingsRepository
+import com.novay.sound.data.settings.Toggle
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,8 +64,10 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val library: LibraryRepository,
-    private val youtube: YouTubeRepository
+    private val youtube: YouTubeRepository,
+    settings: SettingsRepository
 ) : ViewModel() {
+    val settings = settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
     private fun <T> kotlinx.coroutines.flow.Flow<List<T>>.state() =
         stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -93,6 +101,7 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenSmart: (SmartList) -> Unit,
     onOpenCar: () -> Unit,
+    onMood: (Mood) -> Unit,
     vm: HomeViewModel = hiltViewModel()
 ) {
     val recent by vm.recent.collectAsStateWithLifecycle()
@@ -100,6 +109,7 @@ fun HomeScreen(
     val mostPlayed by vm.mostPlayed.collectAsStateWithLifecycle()
     val quick by vm.quickPicks.collectAsStateWithLifecycle()
     val trending by vm.trending.collectAsStateWithLifecycle()
+    val s by vm.settings.collectAsStateWithLifecycle()
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
         item {
@@ -125,19 +135,30 @@ fun HomeScreen(
             }
         }
 
-        if (recent.isNotEmpty() || favorites.isNotEmpty()) {
+        if (s.on(Toggle.SHOW_SMART) && (recent.isNotEmpty() || favorites.isNotEmpty())) {
             item { SectionTitle("Senin için") }
             item { SmartListCards(onOpenSmart) }
         }
 
-        if (quick.isNotEmpty()) {
+        if (s.on(Toggle.SHOW_MOODS)) {
+            item { SectionTitle("Ruh haline göre") }
+            item {
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(Mood.entries.toList()) { m ->
+                        AssistChip(onClick = { onMood(m) }, label = { Text("${m.emoji}  ${m.label}") })
+                    }
+                }
+            }
+        }
+
+        if (s.on(Toggle.SHOW_QUICK) && quick.isNotEmpty()) {
             item { SectionTitle("Hızlı seçimler") }
             itemsIndexed(quick, key = { _, s -> "q" + s.id }) { i, song ->
                 SongRow(song, song.id == currentId, actions, onClick = { actions.play(quick, i) })
             }
         }
 
-        horizontalSection("Türkiye'de trend", trending, actions)
+        if (s.on(Toggle.SHOW_TRENDING)) horizontalSection("Türkiye'de trend", trending, actions)
         horizontalSection("Son çalınanlar", recent, actions)
         horizontalSection("Favoriler", favorites, actions)
 

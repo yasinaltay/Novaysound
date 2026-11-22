@@ -10,6 +10,8 @@ import androidx.media3.datasource.cache.NoOpCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.offline.DownloadManager
 import com.novay.sound.playback.AudioDataSourceFactory
+import com.novay.sound.data.settings.SettingsRepository
+import kotlinx.coroutines.runBlocking
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -39,8 +41,14 @@ object CacheModule {
 
     /** SimpleCache örnekleri TEKİL olmalı (aynı klasöre iki örnek = çökme). */
     @Provides @Singleton @PlaybackCache
-    fun providePlaybackCache(@ApplicationContext context: Context, db: DatabaseProvider): SimpleCache =
-        SimpleCache(File(context.filesDir, "audio_cache"), LeastRecentlyUsedCacheEvictor(MAX_CACHE_BYTES), db)
+    fun providePlaybackCache(
+        @ApplicationContext context: Context,
+        db: DatabaseProvider,
+        settings: SettingsRepository
+    ): SimpleCache {
+        val mb = runCatching { runBlocking { settings.current().cacheSizeMb } }.getOrDefault(2048)
+        return SimpleCache(File(context.filesDir, "audio_cache"), LeastRecentlyUsedCacheEvictor(mb * 1_048_576L), db)
+    }
 
     @Provides @Singleton @DownloadCache
     fun provideDownloadCache(@ApplicationContext context: Context, db: DatabaseProvider): SimpleCache =

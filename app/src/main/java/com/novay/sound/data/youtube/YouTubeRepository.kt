@@ -2,6 +2,9 @@ package com.novay.sound.data.youtube
 
 import android.net.Uri
 import com.novay.sound.data.model.Song
+import com.novay.sound.data.settings.Toggle
+import com.novay.sound.util.FeatureFlags
+import com.novay.sound.util.TitleCleaner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.InfoItem
@@ -61,7 +64,7 @@ data class AudioSource(val url: String, val mimeType: String?, val bitrate: Int,
 
 /** YouTube erişiminin tamamı (NewPipeExtractor). Tüm fonksiyonlar IO thread'inde çalışır. */
 @Singleton
-class YouTubeRepository @Inject constructor() {
+class YouTubeRepository @Inject constructor(private val flags: FeatureFlags) {
 
     private val service get() = ServiceList.YouTube
     private val urlCache = ConcurrentHashMap<String, AudioSource>()
@@ -72,7 +75,7 @@ class YouTubeRepository @Inject constructor() {
         withContext(Dispatchers.IO) {
             val handler = service.searchQHFactory.fromQuery(query, listOf(filter.value), "")
             val info = SearchInfo.getInfo(service, handler)
-            val songs = info.relatedItems.toSongs()
+            val songs = info.relatedItems.toSongs().dedupe()
             // Müzik filtresi boş dönerse normal video aramasına düş
             if (songs.isEmpty() && filter == SearchFilter.SONGS) search(query, SearchFilter.VIDEOS)
             else SearchPage(songs, handler, info.nextPage)
@@ -80,7 +83,7 @@ class YouTubeRepository @Inject constructor() {
 
     suspend fun searchMore(page: SearchPage): SearchPage = withContext(Dispatchers.IO) {
         val more = SearchInfo.getMoreItems(service, page.handler, page.nextPage)
-        SearchPage(more.items.toSongs(), page.handler, more.nextPage)
+        SearchPage(more.items.toSongs().dedupe(), page.handler, more.nextPage)
     }
 
     suspend fun suggestions(query: String): List<String> = withContext(Dispatchers.IO) {
@@ -151,10 +154,11 @@ class YouTubeRepository @Inject constructor() {
 
     suspend fun getSong(videoId: String): Song = withContext(Dispatchers.IO) {
         val info = StreamInfo.getInfo(service, videoUrl(videoId))
+        val (title, artist) = tidy(info.name, cleanArtist(info.uploaderName))
         Song(
             id = videoId,
-            title = info.name,
-            artist = cleanArtist(info.uploaderName),
+            title = title,
+            artist = artist,
             thumbnailUrl = bestThumb(info.thumbnails, videoId),
             durationSec = info.duration.coerceAtLeast(0),
             artistUrl = info.uploaderUrl
@@ -269,15 +273,22 @@ class YouTubeRepository @Inject constructor() {
     private fun StreamInfoItem.toSong(): Song? {
         if (streamType == StreamType.LIVE_STREAM || streamType == StreamType.AUDIO_LIVE_STREAM) return null
         val id = runCatching { service.streamLHFactory.getId(url) }.getOrNull() ?: return null
+        val (title, artist) = tidy(name, cleanArtist(uploaderName))
         return Song(
             id = id,
-            title = name,
-            artist = cleanArtist(uploaderName),
+            title = title,
+            artist = artist,
             thumbnailUrl = bestThumb(thumbnails, id),
             durationSec = duration.coerceAtLeast(0),
             artistUrl = uploaderUrl
         )
     }
+
+    private fun tidy(title: String, artist: String): Pair<String, String> =
+        if (flags.on(Toggle.CLEAN_TITLES)) TitleCleaner.clean(title, artist) else title to artist
+
+    private fun List<Song>.dedupe(): List<Song> =
+        if (flags.on(Toggle.DEDUPE)) distinctBy { TitleCleaner.key(it.title, it.artist) } else this
 
     private fun cleanArtist(name: String?): String =
         name.orEmpty().removeSuffix(" - Topic").removeSuffix("VEVO").trim()

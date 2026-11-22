@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -12,6 +13,22 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** Ayarlardan açılıp kapatılabilen özellikler. */
+enum class Toggle(val key: String, val default: Boolean, val title: String, val subtitle: String) {
+    AUTO_RADIO("f_auto_radio", true, "Sonsuz radyo", "Sıra bitince benzer şarkıları otomatik ekle"),
+    CLEAN_TITLES("f_clean_titles", true, "Başlık temizleme", "\"(Official Video)\" gibi ekleri sil, sanatçıyı ayır"),
+    DEDUPE("f_dedupe", true, "Kopyaları gizle", "Aynı şarkının klip/lyric/audio sürümlerini aramada tek göster"),
+    SHOW_SMART("f_show_smart", true, "Akıllı listeler (ana ekran)", "Bu ay en çok, unuttuğun favoriler, haftalık keşif"),
+    SHOW_MOODS("f_show_moods", true, "Ruh hali listeleri (ana ekran)", "Spor, Odak, Yol, Sakin…"),
+    SHOW_QUICK("f_show_quick", true, "Hızlı seçimler (ana ekran)", "Son dinlediğine benzer şarkılar"),
+    SHOW_TRENDING("f_show_trending", true, "Trendler (ana ekran)", "Türkiye'de trend olan şarkılar"),
+    RECORD_STATS("f_record_stats", true, "Dinleme istatistiği", "Dinlediklerini istatistik ve akıllı listeler için kaydet"),
+    SEARCH_HISTORY("f_search_history", true, "Arama geçmişi", "Son aramaları kaydet"),
+    LOCK_LYRICS("f_lock_lyrics", false, "Kilit ekranında sözler (deneysel)", "Bildirim ve kilit ekranında sanatçı yerine o anki söz satırı"),
+    AUTO_SLEEP("f_auto_sleep", false, "Otomatik uyku zamanlayıcısı", "Gece çalmaya başlayınca zamanlayıcıyı kendiliğinden kur"),
+    ALARM("f_alarm", false, "Müzikli alarm", "Her sabah seçtiğin saatte müzikle uyandır")
+}
 
 enum class AudioQuality(val label: String) { AUTO("Otomatik"), HIGH("Yüksek"), LOW("Düşük") }
 
@@ -31,10 +48,21 @@ data class AppSettings(
     val wifiOnlyDownloads: Boolean = false,
     val autoUpdateCheck: Boolean = true,
     val autoBackup: Boolean = false,
-    val backupFolder: String? = null      // SAF klasör Uri'si
-)
+    val backupFolder: String? = null,     // SAF klasör Uri'si
+    val toggles: Map<Toggle, Boolean> = emptyMap(),
+    val autoSleepHour: Int = 23,
+    val autoSleepMinutes: Int = 30,
+    val alarmHour: Int = 7,
+    val alarmMinute: Int = 30,
+    val alarmSource: String = "FAVORITES", // FAVORITES | DISCOVER
+    val boostDb: Int = 0,                  // ses yükseltme 0..6
+    val cacheSizeMb: Int = 2048
+) {
+    fun on(t: Toggle): Boolean = toggles[t] ?: t.default
+}
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
+private fun intKey(name: String) = intPreferencesKey(name)
 
 @Singleton
 class SettingsRepository @Inject constructor(@ApplicationContext private val context: Context) {
@@ -72,7 +100,15 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             wifiOnlyDownloads = p[Keys.WIFI_DL] ?: false,
             autoUpdateCheck = p[Keys.UPDATE_CHECK] ?: true,
             autoBackup = p[Keys.AUTO_BACKUP] ?: false,
-            backupFolder = p[Keys.BACKUP_FOLDER]
+            backupFolder = p[Keys.BACKUP_FOLDER],
+            toggles = Toggle.entries.associateWith { t -> p[booleanPreferencesKey(t.key)] ?: t.default },
+            autoSleepHour = p[intKey("auto_sleep_hour")] ?: 23,
+            autoSleepMinutes = p[intKey("auto_sleep_minutes")] ?: 30,
+            alarmHour = p[intKey("alarm_hour")] ?: 7,
+            alarmMinute = p[intKey("alarm_minute")] ?: 30,
+            alarmSource = p[stringPreferencesKey("alarm_source")] ?: "FAVORITES",
+            boostDb = p[intKey("boost_db")] ?: 0,
+            cacheSizeMb = p[intKey("cache_size_mb")] ?: 2048
         )
     }
 
@@ -90,6 +126,10 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         it[Keys.EQ_PRESET] = preset.toString()
         it[Keys.EQ_BANDS] = bands.joinToString(",")
     }
+    suspend fun setToggle(t: Toggle, on: Boolean) = set { it[booleanPreferencesKey(t.key)] = on }
+    suspend fun setInt(name: String, value: Int) = set { it[intKey(name)] = value }
+    suspend fun setAlarmSource(src: String) = set { it[stringPreferencesKey("alarm_source")] = src }
+
     suspend fun setAudioQuality(q: AudioQuality) = set { it[Keys.QUALITY] = q.name }
     suspend fun setWifiOnlyDownloads(on: Boolean) = set { it[Keys.WIFI_DL] = on }
 

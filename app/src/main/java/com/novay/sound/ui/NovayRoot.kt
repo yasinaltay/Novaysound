@@ -118,7 +118,8 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                         HomeScreen(actions, currentId, onOpenSearch = { nav.navigateTab("search") },
                             onOpenSettings = { nav.navigate("settings") },
                             onOpenSmart = { nav.navigate("smart/${it.name}") },
-                            onOpenCar = { nav.navigate("car") })
+                            onOpenCar = { nav.navigate("car") },
+                            onMood = vm::playMood)
                     }
                     composable("search") {
                         SearchScreen(actions, currentId, onLink = vm::handleText, onOpenArtist = vm::openArtistUrl)

@@ -53,6 +53,7 @@ import androidx.lifecycle.viewModelScope
 import com.novay.sound.data.model.Song
 import com.novay.sound.data.youtube.SearchFilter
 import com.novay.sound.data.settings.SettingsRepository
+import com.novay.sound.data.settings.Toggle
 import com.novay.sound.data.youtube.ArtistItem
 import com.novay.sound.ui.components.Artwork
 import com.novay.sound.ui.artist.formatCount
@@ -119,7 +120,7 @@ class SearchViewModel @Inject constructor(
     fun search(q: String = query.value) {
         if (q.isBlank()) return
         query.value = q
-        viewModelScope.launch { settings.addSearch(q) }
+        viewModelScope.launch { if (settings.current().on(Toggle.SEARCH_HISTORY)) settings.addSearch(q) }
         job?.cancel()
         job = viewModelScope.launch {
             _ui.value = SearchUi.Loading

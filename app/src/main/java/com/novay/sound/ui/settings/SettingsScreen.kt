@@ -69,6 +69,11 @@ import com.novay.sound.data.settings.AppSettings
 import com.novay.sound.data.settings.SettingsRepository
 import com.novay.sound.data.settings.ThemeMode
 import com.novay.sound.data.settings.AudioQuality
+import com.novay.sound.data.settings.Toggle
+import com.novay.sound.alarm.AlarmScheduler
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import com.novay.sound.di.CacheModule
 import com.novay.sound.di.DownloadCache
 import com.novay.sound.di.PlaybackCache
@@ -117,6 +122,22 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun backupNow() = AutoBackupWorker.runNow(context)
+
+    fun setToggle(t: Toggle, on: Boolean) = viewModelScope.launch {
+        repo.setToggle(t, on)
+        if (t == Toggle.ALARM) AlarmScheduler.reschedule(context)
+    }
+
+    fun setInt(name: String, v: Int) = viewModelScope.launch {
+        repo.setInt(name, v)
+        if (name.startsWith("alarm_")) AlarmScheduler.reschedule(context)
+    }
+
+    fun setAlarmSource(src: String) = viewModelScope.launch { repo.setAlarmSource(src) }
+
+    fun clearCache() = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        cache.keys.toList().forEach { runCatching { cache.removeResource(it) } }
+    }
 }
 
 @Composable
@@ -129,6 +150,8 @@ fun SettingsScreen(
 ) {
     val s by vm.settings.collectAsStateWithLifecycle()
     var showLog by rememberSaveable { mutableStateOf(false) }
+    var showTime by rememberSaveable { mutableStateOf(false) }
+    var cleared by rememberSaveable { mutableStateOf(false) }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri?.let(vm::enableAutoBackup)
     }
@@ -162,6 +185,27 @@ fun SettingsScreen(
             SwitchRow("Kapak rengini kullan", "Vurgu rengi çalan şarkının kapağına göre değişir", s.artworkColors, vm::setArtworkColors)
         }
 
+        SettingsCard("Özellikler") {
+            listOf(
+                Toggle.AUTO_RADIO, Toggle.CLEAN_TITLES, Toggle.DEDUPE, Toggle.SHOW_SMART, Toggle.SHOW_MOODS,
+                Toggle.SHOW_QUICK, Toggle.SHOW_TRENDING, Toggle.RECORD_STATS, Toggle.SEARCH_HISTORY, Toggle.LOCK_LYRICS
+            ).forEach { t -> SwitchRow(t.title, t.subtitle, s.on(t)) { vm.setToggle(t, it) } }
+        }
+
+        SettingsCard("Uyku ve alarm") {
+            SwitchRow(Toggle.AUTO_SLEEP.title, Toggle.AUTO_SLEEP.subtitle, s.on(Toggle.AUTO_SLEEP)) { vm.setToggle(Toggle.AUTO_SLEEP, it) }
+            if (s.on(Toggle.AUTO_SLEEP)) {
+                ChipRow("Şu saatten sonra", listOf(21, 22, 23, 0), s.autoSleepHour, { "%02d:00".format(it) }) { vm.setInt("auto_sleep_hour", it) }
+                ChipRow("Kaç dakika sonra dursun", listOf(15, 30, 45, 60, 90), s.autoSleepMinutes, { "$it dk" }) { vm.setInt("auto_sleep_minutes", it) }
+            }
+            SwitchRow(Toggle.ALARM.title, Toggle.ALARM.subtitle, s.on(Toggle.ALARM)) { vm.setToggle(Toggle.ALARM, it) }
+            if (s.on(Toggle.ALARM)) {
+                LinkRow("Alarm saati", "%02d:%02d • her gün".format(s.alarmHour, s.alarmMinute)) { showTime = true }
+                ChipRow("Ne çalsın", listOf("FAVORITES", "DISCOVER"), s.alarmSource,
+                    { if (it == "FAVORITES") "Favoriler (karışık)" else "Haftalık keşif" }) { vm.setAlarmSource(it) }
+            }
+        }
+
         SettingsCard("Ses") {
             LinkRow("Ekolayzer ve ses dengeleme", if (s.eqEnabled) "Açık" else "Kapalı", onOpenEqualizer)
             Text("Ses kalitesi", style = MaterialTheme.typography.bodyLarge)
@@ -192,6 +236,12 @@ fun SettingsScreen(
                 value = fade, onValueChange = { fade = it }, valueRange = 0f..12f, steps = 11,
                 onValueChangeFinished = { vm.setCrossfade(fade.toInt()) }
             )
+            Text("Ses yükseltme", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp))
+            Text(if (s.boostDb == 0) "Kapalı" else "+${s.boostDb} dB (sesi zayıf şarkılar/kulaklıklar için)",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            var boost by remember(s.boostDb) { mutableFloatStateOf(s.boostDb.toFloat()) }
+            Slider(value = boost, onValueChange = { boost = it }, valueRange = 0f..6f, steps = 5,
+                onValueChangeFinished = { vm.setInt("boost_db", boost.toInt()) })
             SwitchRow("SponsorBlock", "Klip videolarındaki konuşma, sponsor ve müzik dışı kısımları atla",
                 s.sponsorBlock, vm::setSponsorBlock)
         }
@@ -210,10 +260,15 @@ fun SettingsScreen(
         SettingsCard("Depolama") {
             Text("İndirilenler: %.0f MB".format(vm.downloadBytes / 1_048_576.0), style = MaterialTheme.typography.bodyLarge)
             Text(
-                "Otomatik önbellek: %.0f MB / %d MB".format(vm.cacheBytes / 1_048_576.0, CacheModule.MAX_CACHE_BYTES / 1_048_576),
+                "Otomatik önbellek: %.0f MB / %d MB".format(vm.cacheBytes / 1_048_576.0, s.cacheSizeMb),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            ChipRow("Önbellek boyutu (yeniden başlatınca geçerli)", listOf(512, 1024, 2048, 5120, 10240), s.cacheSizeMb,
+                { if (it < 1024) "$it MB" else "${it / 1024} GB" }) { vm.setInt("cache_size_mb", it) }
+            TextButton(onClick = { vm.clearCache(); cleared = true }) {
+                Text(if (cleared) "Önbellek temizlendi ✓" else "Otomatik önbelleği temizle (indirilenler kalır)")
+            }
         }
 
         SettingsCard("Uygulama") {
@@ -234,6 +289,32 @@ fun SettingsScreen(
     }
 
     if (showLog) CrashLogDialog(onDismiss = { showLog = false })
+    if (showTime) {
+        val state = rememberTimePickerState(s.alarmHour, s.alarmMinute, is24Hour = true)
+        AlertDialog(
+            onDismissRequest = { showTime = false },
+            title = { Text("Alarm saati") },
+            text = { TimePicker(state = state) },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.setInt("alarm_hour", state.hour); vm.setInt("alarm_minute", state.minute); showTime = false
+                }) { Text("Kaydet") }
+            },
+            dismissButton = { TextButton(onClick = { showTime = false }) { Text("İptal") } }
+        )
+    }
+}
+
+@Composable
+private fun <T> ChipRow(label: String, options: List<T>, selected: T, text: (T) -> String, onSelect: (T) -> Unit) {
+    Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 4.dp))
+    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(options.size) { i ->
+            val o = options[i]
+            FilterChip(selected = o == selected, onClick = { onSelect(o) }, label = { Text(text(o), maxLines = 1) })
+        }
+    }
 }
 
 @Composable

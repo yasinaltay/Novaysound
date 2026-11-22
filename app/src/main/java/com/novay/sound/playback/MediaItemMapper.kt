@@ -8,6 +8,7 @@ import com.novay.sound.data.model.Song
 
 private const val EXTRA_DURATION = "novay.duration"
 private const val EXTRA_ARTIST_URL = "novay.artistUrl"
+private const val EXTRA_ARTIST = "novay.artist"
 
 /**
  * Şarkı -> MediaItem. URI sadece yer tutucu; gerçek ses URL'si oynatma anında
@@ -32,6 +33,7 @@ fun Song.toMediaItem(parent: String? = null): MediaItem =
                 .setExtras(Bundle().apply {
                     putLong(EXTRA_DURATION, durationSec)
                     putString(EXTRA_ARTIST_URL, artistUrl)
+                    putString(EXTRA_ARTIST, artist)
                 })
                 .build()
         )
@@ -46,7 +48,7 @@ fun MediaItem.toSongOrNull(): Song? {
     return Song(
         id = videoId,
         title = title,
-        artist = mediaMetadata.artist?.toString().orEmpty(),
+        artist = mediaMetadata.extras?.getString(EXTRA_ARTIST) ?: mediaMetadata.artist?.toString().orEmpty(),
         thumbnailUrl = mediaMetadata.artworkUri?.toString(),
         durationSec = mediaMetadata.extras?.getLong(EXTRA_DURATION) ?: 0L,
         artistUrl = mediaMetadata.extras?.getString(EXTRA_ARTIST_URL)

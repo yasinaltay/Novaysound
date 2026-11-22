@@ -36,6 +36,7 @@ class AudioEffects @Inject constructor(private val settings: SettingsRepository)
     private var job: Job? = null
     private var equalizer: Equalizer? = null
     private var dynamics: DynamicsProcessing? = null
+    private var enhancer: android.media.audiofx.LoudnessEnhancer? = null
 
     private val _info = MutableStateFlow<EqInfo?>(null)
     val info = _info.asStateFlow()
@@ -72,6 +73,8 @@ class AudioEffects @Inject constructor(private val settings: SettingsRepository)
                 }
             }.onFailure { CrashLogger.log("Ses dengeleme açılamadı", it) }.getOrNull()
         }
+        enhancer = runCatching { android.media.audiofx.LoudnessEnhancer(sessionId) }
+            .onFailure { CrashLogger.log("Ses yükseltme açılamadı", it) }.getOrNull()
         job = scope.launch { settings.settings.collect(::apply) }
     }
 
@@ -87,12 +90,18 @@ class AudioEffects @Inject constructor(private val settings: SettingsRepository)
             }
         }
         dynamics?.runCatching { enabled = s.normalize }
+        enhancer?.runCatching {
+            setTargetGain(s.boostDb * 100) // millibel
+            enabled = s.boostDb > 0
+        }
     }
 
     fun release() {
         job?.cancel()
         equalizer?.runCatching { release() }
         dynamics?.runCatching { release() }
+        enhancer?.runCatching { release() }
+        enhancer = null
         equalizer = null
         dynamics = null
     }
