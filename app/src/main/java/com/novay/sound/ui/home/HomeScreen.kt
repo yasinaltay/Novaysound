@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Spacer
@@ -72,6 +73,7 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     private val library: LibraryRepository,
     private val youtube: YouTubeRepository,
+    private val generator: com.novay.sound.data.smart.PlaylistGenerator,
     settings: SettingsRepository
 ) : ViewModel() {
     val settings = settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
@@ -95,8 +97,7 @@ class HomeViewModel @Inject constructor(
 
     /** Son dinlenen şarkıya benzeyenlerden "Hızlı seçimler". */
     fun refreshQuickPicks() = viewModelScope.launch {
-        val seed = library.getRecent().firstOrNull() ?: return@launch
-        _quickPicks.value = runCatching { youtube.radio(seed.id) }.getOrDefault(emptyList()).take(10)
+        _quickPicks.value = runCatching { generator.quickPicks() }.getOrDefault(emptyList())
     }
 }
 
@@ -179,7 +180,14 @@ fun HomeScreen(
         }
 
         if (s.on(Toggle.SHOW_QUICK) && quick.isNotEmpty()) {
-            item { SectionTitle("Hızlı seçimler") }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SectionTitle("Hızlı seçimler", Modifier.weight(1f))
+                    IconButton(onClick = { vm.refreshQuickPicks() }, modifier = Modifier.padding(top = 12.dp, end = 4.dp)) {
+                        Icon(Icons.Default.Refresh, "Yenile")
+                    }
+                }
+            }
             itemsIndexed(quick, key = { _, s -> "q" + s.id }) { i, song ->
                 SongRow(song, song.id == currentId, actions, onClick = { actions.play(quick, i) })
             }

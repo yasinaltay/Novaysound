@@ -4,6 +4,7 @@ import com.novay.sound.data.model.Song
 import com.novay.sound.data.repository.LibraryRepository
 import com.novay.sound.data.youtube.SearchFilter
 import com.novay.sound.data.youtube.YouTubeRepository
+import com.novay.sound.util.TitleCleaner
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -59,6 +60,42 @@ class PlaylistGenerator @Inject constructor(
             while (its.any { it.hasNext() }) its.forEach { if (it.hasNext()) add(it.next()) }
         }.distinctBy { it.id }
         smartShuffle(merged)
+    }
+
+    /**
+     * Hızlı seçimler: son dinlediklerin ve favorilerinden 3 tohum şarkı, her birinin benzerleri.
+     * Birden çok tohumun önerisinde geçen ve tanıdık sanatçılardan olan şarkılar öne çıkar;
+     * mix, derleme, slowed/sped up, karaoke gibi "şarkı olmayan" sonuçlar ve son dinlediklerin elenir.
+     */
+    suspend fun quickPicks(count: Int = 10): List<Song> = coroutineScope {
+        val ok = { s: Song -> !s.isRadio && !s.isLocal && s.durationSec in 90..480 && !isJunkTitle(s.title) }
+        val recent = library.getRecent().filter(ok)
+        val favs = library.getFavorites().filter(ok)
+        val seeds = (recent.take(6) + favs.shuffled().take(4)).distinctBy { it.id }.shuffled().take(3)
+        if (seeds.isEmpty()) return@coroutineScope runCatching { youtube.trending() }.getOrDefault(emptyList()).filter(ok).take(count)
+
+        val knownArtists = (recent + favs).map { it.artist.lowercase() }.toSet()
+        val skip = recent.take(25).map { it.id }.toSet() + seeds.map { it.id }
+        val all = seeds.map { s -> async { runCatching { youtube.radio(s.id).take(25) }.getOrDefault(emptyList()) } }
+            .awaitAll().flatten()
+            .filter { ok(it) && it.id !in skip }
+        val freq = all.groupingBy { TitleCleaner.key(it.title, it.artist) }.eachCount()
+        val ranked = all.distinctBy { TitleCleaner.key(it.title, it.artist) }
+            .shuffled()
+            .sortedByDescending { s ->
+                (freq[TitleCleaner.key(s.title, s.artist)] ?: 1) * 2 + if (s.artist.lowercase() in knownArtists) 1 else 0
+            }
+        smartShuffle(ranked.take(count + 5)).take(count)
+    }
+
+    companion object {
+        /** Şarkı olmayan / düşük kaliteli sonuçlar (mix, derleme, slowed, karaoke…). */
+        private val JUNK = Regex(
+            "(?i)(\\bmix\\b|mixtape|full album|tüm albüm|playlist|çalma listesi|\\b\\d+\\s*(saat|hour|hours)\\b|saatlik|karışık|" +
+                "compilation|non-?stop|live stream|canlı yayın|podcast|slowed|reverb|sped up|speed up|\\b8d\\b|nightcore|" +
+                "karaoke|instrumental|enstrümantal|altyapı|type beat|\\bcover\\b|tiktok|shorts|reaction|tepki)"
+        )
+        fun isJunkTitle(title: String): Boolean = JUNK.containsMatchIn(title)
     }
 
     /** Aynı sanatçının şarkıları arka arkaya gelmesin. */
