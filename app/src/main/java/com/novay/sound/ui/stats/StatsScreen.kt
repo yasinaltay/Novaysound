@@ -92,7 +92,8 @@ fun StatsScreen(actions: SongActions, onBack: () -> Unit, onOpenArtist: (String)
         item {
             Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri") }
-                Text("İstatistikler", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                Text("İstatistikler", style = MaterialTheme.typography.titleLarge, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 androidx.compose.material3.FilledTonalButton(onClick = onOpenWrapped, modifier = Modifier.padding(end = 12.dp)) {
                     Text("✨ Yıllık özet")
                 }

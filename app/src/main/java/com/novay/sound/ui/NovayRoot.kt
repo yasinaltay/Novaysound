@@ -247,7 +247,7 @@ private fun BottomBar(nav: NavHostController) {
                 selected = selected,
                 onClick = { nav.navigateTab(tab.route) },
                 icon = { Icon(tab.icon, null) },
-                label = { Text(tab.label) }
+                label = { Text(tab.label, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
             )
         }
     }

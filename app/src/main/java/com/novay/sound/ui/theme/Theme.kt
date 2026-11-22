@@ -133,6 +133,8 @@ fun BrandTitle(modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modi
         fontWeight = FontWeight.Bold,
         fontSize = fontSize,
         maxLines = 1,
+        softWrap = false,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         modifier = modifier
     )
 }

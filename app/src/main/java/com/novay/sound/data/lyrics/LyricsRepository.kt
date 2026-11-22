@@ -62,7 +62,7 @@ class LyricsRepository @Inject constructor(
                 ?: search("$artist $title", song.durationSec)
                 ?: search(title, song.durationSec)
             val lyrics = result?.let {
-                Lyrics(parseLrc(it.syncedLyrics.orEmpty()), it.plainLyrics?.takeIf(String::isNotBlank))
+                Lyrics(LrcParser.parse(it.syncedLyrics.orEmpty()), it.plainLyrics?.takeIf(String::isNotBlank))
             }?.takeIf { it.isSynced || it.plain != null }
             if (lyrics != null) {
                 cache[song.id] = lyrics
@@ -111,14 +111,16 @@ class LyricsRepository @Inject constructor(
         return artist.trim() to title.replace(Regex("\\s+"), " ").trim()
     }
 
-    private fun parseLrc(lrc: String): List<LyricLine> {
-        val re = Regex("""\[(\d+):(\d+(?:\.\d+)?)]""")
-        return lrc.lines().flatMap { line ->
-            val text = line.replace(re, "").trim()
-            re.findAll(line).map { m ->
-                val ms = m.groupValues[1].toLong() * 60_000 + (m.groupValues[2].toDouble() * 1000).toLong()
-                LyricLine(ms, text)
-            }.toList()
-        }.sortedBy { it.timeMs }
-    }
+}
+
+/** "[01:23.45] söz" biçimindeki LRC metnini zamanlı satırlara çevirir. */
+object LrcParser {
+    private val re = Regex("""\[(\d+):(\d+(?:\.\d+)?)]""")
+    fun parse(lrc: String): List<LyricLine> = lrc.lines().flatMap { line ->
+        val text = line.replace(re, "").trim()
+        re.findAll(line).map { m ->
+            val ms = m.groupValues[1].toLong() * 60_000 + (m.groupValues[2].toDouble() * 1000).toLong()
+            LyricLine(ms, text)
+        }.toList()
+    }.sortedBy { it.timeMs }
 }

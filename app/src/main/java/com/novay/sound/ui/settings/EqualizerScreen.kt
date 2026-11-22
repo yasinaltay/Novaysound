@@ -139,7 +139,7 @@ fun EqualizerScreen(onBack: () -> Unit, vm: EqualizerViewModel = hiltViewModel()
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                 val hz = eq.bandFreqsHz[i]
                 Text(if (hz >= 1000) "${hz / 1000} kHz" else "$hz Hz", modifier = Modifier.width(64.dp),
-                    style = MaterialTheme.typography.bodySmall)
+                    style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
                 Slider(
                     value = level.toFloat(),
                     onValueChange = { levels[i] = it.toInt() },
@@ -148,8 +148,8 @@ fun EqualizerScreen(onBack: () -> Unit, vm: EqualizerViewModel = hiltViewModel()
                     enabled = s.eqEnabled,
                     modifier = Modifier.weight(1f)
                 )
-                Text("%+.0f dB".format(level / 100f), modifier = Modifier.width(56.dp),
-                    style = MaterialTheme.typography.bodySmall)
+                Text("%+.0f dB".format(level / 100f), modifier = Modifier.width(60.dp),
+                    style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
             }
         }
         TextButton(

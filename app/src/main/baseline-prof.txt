@@ -1,0 +1,4 @@
+# Novay Sound baseline profile: açılışta ve oynatmada kullanılan sınıflar önceden derlenir.
+# Compose, Media3 ve diğer AndroidX kütüphaneleri kendi profillerini zaten getiriyor.
+HSPLcom/novay/sound/**->**(**)**
+Lcom/novay/sound/**;

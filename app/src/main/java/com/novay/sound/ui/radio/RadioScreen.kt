@@ -123,7 +123,7 @@ fun RadioScreen(
                         selected = c == country,
                         onClick = { query = ""; vm.setCountry(c) },
                         shape = SegmentedButtonDefaults.itemShape(i, RadioCountry.entries.size),
-                        label = { Text("${c.flag} ${c.label}", maxLines = 1) }
+                        label = { Text("${c.flag} ${c.label}", maxLines = 1, softWrap = false) }
                     )
                 }
             }

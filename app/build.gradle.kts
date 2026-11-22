@@ -15,8 +15,8 @@ android {
         applicationId = "com.novay.sound"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.9.0"
+        versionCode = 14
+        versionName = "0.9.1"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -66,6 +66,10 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true // Robolectric
+        unitTests.isReturnDefaultValues = true
+    }
     lint {
         checkReleaseBuilds = false
         abortOnError = false
@@ -114,6 +118,14 @@ dependencies {
     implementation(libs.mediarouter)
     implementation(libs.reorderable)
     implementation(libs.zxing)
+    // Sideload kurulumda da açılışı hızlandıran profil (src/main/baseline-prof.txt)
+    implementation(libs.profileinstaller)
+
+    // Testler
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.kotlinx.coroutines.test)
 
     // Room
     implementation(libs.room.runtime)

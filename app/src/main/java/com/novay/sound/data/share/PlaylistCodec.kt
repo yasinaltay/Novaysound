@@ -2,7 +2,6 @@ package com.novay.sound.data.share
 
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.util.Base64
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -26,12 +25,12 @@ object PlaylistCodec {
         val bytes = ByteArrayOutputStream().also { out ->
             GZIPOutputStream(out).use { it.write(json.encodeToString(SharedPlaylist.serializer(), data).toByteArray()) }
         }.toByteArray()
-        return PREFIX + Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        return PREFIX + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 
     fun decode(text: String): Pair<String, List<Song>>? = runCatching {
         val d = text.substringAfter(PREFIX, "").takeWhile { !it.isWhitespace() }.ifBlank { return null }
-        val raw = GZIPInputStream(Base64.decode(d, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING).inputStream())
+        val raw = GZIPInputStream(java.util.Base64.getUrlDecoder().decode(d).inputStream())
             .use { it.readBytes() }.decodeToString()
         val p = json.decodeFromString(SharedPlaylist.serializer(), raw)
         p.n to p.s.filter { it.size >= 3 }.map {

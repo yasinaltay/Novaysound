@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -72,17 +73,19 @@ private fun SmartList.colors(): List<Color> = when (this) {
 fun SmartListCards(onOpen: (SmartList) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items(SmartList.entries) { type ->
-            Box(
-                Modifier.width(150.dp).height(110.dp).clip(RoundedCornerShape(18.dp))
+            // Yükseklik sabit değil: büyük yazı tipinde başlık simgenin üstüne binmez
+            Column(
+                Modifier.width(150.dp).heightIn(min = 110.dp).clip(RoundedCornerShape(18.dp))
                     .background(Brush.linearGradient(type.colors()))
                     .clickable { onOpen(type) }
-                    .padding(14.dp)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
                 Icon(type.icon(), null, tint = Color.White, modifier = Modifier.size(28.dp))
                 Text(
-                    type.title, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 2,
+                    type.title, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 3,
                     overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.align(Alignment.BottomStart)
+                    modifier = Modifier.padding(top = 8.dp)
                 )
             }
         }

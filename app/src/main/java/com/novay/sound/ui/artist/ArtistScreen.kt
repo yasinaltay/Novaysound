@@ -138,7 +138,8 @@ private fun ArtistContent(
                     Artwork(artist.avatar, Modifier.size(72.dp).clip(CircleShape), corner = 36.dp)
                     Spacer(Modifier.width(14.dp))
                     Column {
-                        Text(artist.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+                        Text(artist.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold,
+                            maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                         if (artist.subscribers > 0) Text(
                             "${formatCount(artist.subscribers)} abone",
                             color = MaterialTheme.colorScheme.onSurfaceVariant

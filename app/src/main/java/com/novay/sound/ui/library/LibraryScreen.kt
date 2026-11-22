@@ -349,10 +349,10 @@ fun SongList(
 fun PlayShuffleRow(onPlay: () -> Unit, onShuffle: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         FilledTonalButton(onClick = onPlay, modifier = Modifier.weight(1f)) {
-            Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text("Çal")
+            Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text("Çal", maxLines = 1)
         }
         FilledTonalButton(onClick = onShuffle, modifier = Modifier.weight(1f)) {
-            Icon(Icons.Default.Shuffle, null); Spacer(Modifier.width(8.dp)); Text("Karıştır")
+            Icon(Icons.Default.Shuffle, null); Spacer(Modifier.width(8.dp)); Text("Karıştır", maxLines = 1, softWrap = false)
         }
     }
 }

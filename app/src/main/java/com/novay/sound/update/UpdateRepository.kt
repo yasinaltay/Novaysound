@@ -47,7 +47,7 @@ class UpdateRepository @Inject constructor(
         val rel = json.decodeFromString(GhRelease.serializer(), body)
         val version = rel.tag_name.removePrefix("v")
         val apk = rel.assets.firstOrNull { it.name.endsWith(".apk") } ?: return@withContext null
-        if (isNewer(version, BuildConfig.VERSION_NAME)) UpdateInfo(version, rel.body.orEmpty(), apk.browser_download_url, apk.size)
+        if (Versions.isNewer(version, BuildConfig.VERSION_NAME)) UpdateInfo(version, rel.body.orEmpty(), apk.browser_download_url, apk.size)
         else null
     }
 
@@ -96,9 +96,13 @@ class UpdateRepository @Inject constructor(
         )
     }
 
-    private fun isNewer(remote: String, local: String): Boolean {
-        val r = remote.split('.', '-').mapNotNull { it.toIntOrNull() }
-        val l = local.split('.', '-').mapNotNull { it.toIntOrNull() }
+}
+
+/** "0.10.0" > "0.9.3" gibi sürüm karşılaştırması (metin değil sayı olarak). */
+object Versions {
+    fun isNewer(remote: String, local: String): Boolean {
+        val r = remote.removePrefix("v").split('.', '-').mapNotNull { it.toIntOrNull() }
+        val l = local.removePrefix("v").split('.', '-').mapNotNull { it.toIntOrNull() }
         for (i in 0 until maxOf(r.size, l.size)) {
             val a = r.getOrElse(i) { 0 }; val b = l.getOrElse(i) { 0 }
             if (a != b) return a > b
