@@ -1,7 +1,7 @@
 <resources>
-    <!-- AMOLED siyah temel tema; asıl tema Compose tarafında -->
-    <style name="Theme.NovaySound" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@android:color/black</item>
+    <!-- Açılış (splash) arka planı sistem temasını izler; asıl tema Compose'da -->
+    <style name="Theme.NovaySound" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_bg</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>

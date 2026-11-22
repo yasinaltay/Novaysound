@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -53,6 +54,8 @@ import com.novay.sound.ui.library.PlaylistScreen
 import com.novay.sound.ui.player.FullPlayer
 import com.novay.sound.ui.player.MiniPlayer
 import com.novay.sound.ui.search.SearchScreen
+import com.novay.sound.ui.settings.SettingsScreen
+import androidx.compose.ui.unit.dp
 import com.novay.sound.ui.theme.NovayTheme
 import com.novay.sound.ui.theme.rememberArtworkAccent
 
@@ -65,11 +68,12 @@ private val TABS = listOf(
 )
 
 @Composable
-fun NovayRoot(vm: MainViewModel) {
+fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
     val state by vm.playerState.collectAsStateWithLifecycle()
-    val accent by rememberArtworkAccent(state.song?.thumbnailUrl)
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val accent by rememberArtworkAccent(state.song?.thumbnailUrl, settings.artworkColors, darkTheme)
 
-    NovayTheme(accent) {
+    NovayTheme(darkTheme = darkTheme, pureBlack = settings.pureBlack, accent = accent) {
         val nav = rememberNavController()
         val snackbar = remember { SnackbarHostState() }
         var showPlayer by rememberSaveable { mutableStateOf(false) }
@@ -79,9 +83,9 @@ fun NovayRoot(vm: MainViewModel) {
         LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
         NotificationPermission()
 
-        Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             Scaffold(
-                containerColor = Color.Black,
+                containerColor = MaterialTheme.colorScheme.background,
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
                     Column {
@@ -93,7 +97,8 @@ fun NovayRoot(vm: MainViewModel) {
             ) { padding ->
                 NavHost(nav, startDestination = "home", modifier = Modifier.padding(padding)) {
                     composable("home") {
-                        HomeScreen(actions, currentId, onOpenSearch = { nav.navigateTab("search") })
+                        HomeScreen(actions, currentId, onOpenSearch = { nav.navigateTab("search") },
+                            onOpenSettings = { nav.navigate("settings") })
                     }
                     composable("search") {
                         SearchScreen(actions, currentId, onLink = vm::handleText)
@@ -101,6 +106,7 @@ fun NovayRoot(vm: MainViewModel) {
                     composable("library") {
                         LibraryScreen(actions, currentId, onOpenPlaylist = { nav.navigate("playlist/$it") })
                     }
+                    composable("settings") { SettingsScreen(onBack = { nav.popBackStack() }) }
                     composable("playlist/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) {
                         PlaylistScreen(actions, currentId, onBack = { nav.popBackStack() })
                     }
@@ -141,7 +147,7 @@ fun NovayRoot(vm: MainViewModel) {
 private fun BottomBar(nav: NavHostController) {
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
-    NavigationBar(containerColor = Color.Black) {
+    NavigationBar(containerColor = MaterialTheme.colorScheme.background, tonalElevation = 0.dp) {
         TABS.forEach { tab ->
             val selected = route == tab.route || (tab.route == "library" && route?.startsWith("playlist") == true)
             NavigationBarItem(

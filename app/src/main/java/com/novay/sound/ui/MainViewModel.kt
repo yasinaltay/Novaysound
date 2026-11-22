@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.novay.sound.data.model.Song
 import com.novay.sound.data.repository.LibraryRepository
+import com.novay.sound.data.settings.AppSettings
+import com.novay.sound.data.settings.SettingsRepository
 import com.novay.sound.data.youtube.YouTubeLink
 import com.novay.sound.data.youtube.YouTubeRepository
 import com.novay.sound.playback.PlayerConnection
@@ -22,8 +24,11 @@ import javax.inject.Inject
 class MainViewModel @Inject constructor(
     val player: PlayerConnection,
     private val library: LibraryRepository,
-    private val youtube: YouTubeRepository
+    private val youtube: YouTubeRepository,
+    settingsRepo: SettingsRepository
 ) : ViewModel() {
+
+    val settings = settingsRepo.settings.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
 
     val playerState = player.state
     val playlists = library.playlists.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

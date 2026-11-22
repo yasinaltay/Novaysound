@@ -12,6 +12,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.res.painterResource
+import com.novay.sound.R
+import com.novay.sound.ui.theme.BrandTitleStyle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -72,6 +80,7 @@ fun HomeScreen(
     actions: SongActions,
     currentId: String?,
     onOpenSearch: () -> Unit,
+    onOpenSettings: () -> Unit,
     vm: HomeViewModel = hiltViewModel()
 ) {
     val recent by vm.recent.collectAsStateWithLifecycle()
@@ -85,12 +94,11 @@ fun HomeScreen(
                 Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "Novay Sound", style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.weight(1f)
-                )
+                Image(painterResource(R.drawable.logo_mark), null, Modifier.size(34.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Novay Sound", style = BrandTitleStyle, modifier = Modifier.weight(1f))
                 IconButton(onClick = onOpenSearch) { Icon(Icons.Default.Search, "Ara") }
+                IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, "Ayarlar") }
             }
         }
 

@@ -45,6 +45,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -74,8 +76,8 @@ fun FullPlayer(
 
     Box(
         Modifier.fillMaxSize()
-            .background(Color.Black)
-            .background(Brush.verticalGradient(listOf(accent.copy(alpha = 0.45f), Color.Black, Color.Black)))
+            .background(MaterialTheme.colorScheme.background)
+            .background(Brush.verticalGradient(listOf(accent.copy(alpha = 0.40f), MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.background)))
             .pointerInput(Unit) {   // aşağı kaydırınca kapat
                 detectVerticalDragGestures(
                     onDragStart = { dragTotal = 0f },
@@ -96,7 +98,12 @@ fun FullPlayer(
             }
 
             Spacer(Modifier.weight(0.6f))
-            Artwork(song.thumbnailUrl, Modifier.fillMaxWidth().aspectRatio(1f), corner = 16.dp)
+            Artwork(
+                song.thumbnailUrl,
+                Modifier.fillMaxWidth().aspectRatio(1f)
+                    .shadow(24.dp, RoundedCornerShape(20.dp), ambientColor = accent, spotColor = accent),
+                corner = 20.dp
+            )
             Spacer(Modifier.weight(0.6f))
 
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
