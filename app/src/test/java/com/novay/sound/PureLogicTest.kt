@@ -4,6 +4,7 @@ import com.novay.sound.data.lyrics.LrcParser
 import com.novay.sound.data.model.Song
 import com.novay.sound.data.share.PlaylistCodec
 import com.novay.sound.update.Versions
+import com.novay.sound.data.radio.popularRank
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
