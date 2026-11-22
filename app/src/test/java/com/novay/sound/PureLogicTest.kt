@@ -78,3 +78,16 @@ class QuickPickFilterTest {
         listOf("Git", "Kayıp Kalp", "Kuzu Kuzu", "Gel Gör Beni Aşk Neyledi", "Bir Derdim Var").forEach { assertFalse(it, junk(it)) }
     }
 }
+
+class JunkFilterTest {
+    @org.junit.Test fun lengths() {
+        org.junit.Assert.assertTrue(com.novay.sound.util.JunkFilter.isSongLength(0))
+        org.junit.Assert.assertTrue(com.novay.sound.util.JunkFilter.isSongLength(200))
+        org.junit.Assert.assertFalse(com.novay.sound.util.JunkFilter.isSongLength(3600))
+        org.junit.Assert.assertFalse(com.novay.sound.util.JunkFilter.isSongLength(30))
+    }
+    @org.junit.Test fun titles() {
+        org.junit.Assert.assertTrue(com.novay.sound.util.JunkFilter.isJunk("Türkçe Pop Mix 2025 - 2 Saat"))
+        org.junit.Assert.assertFalse(com.novay.sound.util.JunkFilter.isJunk("Tarkan - Kuzu Kuzu"))
+    }
+}

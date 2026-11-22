@@ -5,6 +5,8 @@ import com.novay.sound.data.model.Song
 import com.novay.sound.data.settings.Toggle
 import com.novay.sound.util.FeatureFlags
 import com.novay.sound.util.TitleCleaner
+import com.novay.sound.util.JunkFilter
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.InfoItem
@@ -70,7 +72,11 @@ data class AudioSource(val url: String, val mimeType: String?, val bitrate: Int,
 
 /** YouTube erişiminin tamamı (NewPipeExtractor). Tüm fonksiyonlar IO thread'inde çalışır. */
 @Singleton
-class YouTubeRepository @Inject constructor(private val flags: FeatureFlags) {
+class YouTubeRepository @Inject constructor(
+    private val flags: FeatureFlags,
+    private val client: okhttp3.OkHttpClient,
+    private val json: kotlinx.serialization.json.Json
+) {
 
     private val service get() = ServiceList.YouTube
     private val urlCache = ConcurrentHashMap<String, AudioSource>()
@@ -184,7 +190,7 @@ class YouTubeRepository @Inject constructor(private val flags: FeatureFlags) {
             runCatching {
                 StreamInfo.getInfo(service, videoUrl(seedId)).relatedItems.toSongs()
             }.getOrDefault(emptyList())
-        }
+        }.filter { !JunkFilter.isJunk(it.title) && JunkFilter.isSongLength(it.durationSec) }
     }
 
     /** Yapıştırılan YouTube çalma listesi linkini şarkılara çevirir (en fazla [limit]). */
@@ -272,9 +278,18 @@ class YouTubeRepository @Inject constructor(private val flags: FeatureFlags) {
 
     @Volatile private var trendCache: Pair<Long, List<Song>>? = null
 
-    /** Türkiye müzik trendleri (1 saat önbellek); olmazsa "yeni çıkanlar" araması. */
+    /**
+     * Türkiye'de trend (6 saat önbellek):
+     * 1) Apple Music'in resmi, herkese açık "Türkiye'de en çok dinlenenler" listesi -> YouTube'da eşleştirilir
+     * 2) olmazsa YouTube müzik trendleri, 3) o da olmazsa "yeni çıkanlar" araması.
+     */
     suspend fun trending(): List<Song> = withContext(Dispatchers.IO) {
-        trendCache?.takeIf { System.currentTimeMillis() - it.first < 3_600_000 }?.let { return@withContext it.second }
+        trendCache?.takeIf { System.currentTimeMillis() - it.first < 6 * 3_600_000 }?.let { return@withContext it.second }
+        val charts = runCatching { appleChart("tr", 25) }.getOrDefault(emptyList())
+        if (charts.size >= 10) {
+            trendCache = System.currentTimeMillis() to charts
+            return@withContext charts
+        }
         val kiosk = runCatching {
             val kl = service.kioskList
             val id = kl.availableKiosks.firstOrNull { it.contains("music", ignoreCase = true) } ?: kl.defaultKioskId
@@ -287,6 +302,35 @@ class YouTubeRepository @Inject constructor(private val flags: FeatureFlags) {
         }
         if (result.isNotEmpty()) trendCache = System.currentTimeMillis() to result
         result
+    }
+
+    /** Apple Music RSS (rss.applemarketingtools.com) listesini YouTube şarkılarına çevirir, sırayı korur. */
+    private suspend fun appleChart(country: String, limit: Int): List<Song> = kotlinx.coroutines.coroutineScope {
+        val body = client.newCall(
+            okhttp3.Request.Builder()
+                .url("https://rss.applemarketingtools.com/api/v2/$country/music/most-played/$limit/songs.json")
+                .build()
+        ).execute().use { if (it.isSuccessful) it.body?.string() else null } ?: return@coroutineScope emptyList()
+        val results = (json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject)
+            ?.get("feed")?.let { it as? kotlinx.serialization.json.JsonObject }
+            ?.get("results") as? kotlinx.serialization.json.JsonArray ?: return@coroutineScope emptyList()
+        val tracks = results.mapNotNull { r ->
+            val o = r as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+            val name = (o["name"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: return@mapNotNull null
+            val artist = (o["artistName"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+            name to artist
+        }
+        val gate = kotlinx.coroutines.sync.Semaphore(4)
+        tracks.map { (name, artist) ->
+            async {
+                gate.acquire()
+                try {
+                    val found = runCatching { search("$artist $name", SearchFilter.SONGS).songs }.getOrDefault(emptyList())
+                    val key = name.lowercase().filter { it.isLetterOrDigit() }.take(12)
+                    found.firstOrNull { it.title.lowercase().filter { c -> c.isLetterOrDigit() }.contains(key) } ?: found.firstOrNull()
+                } finally { gate.release() }
+            }
+        }.map { it.await() }.filterNotNull().distinctBy { it.id }
     }
 
     // ---------------- Link ayrıştırma ----------------

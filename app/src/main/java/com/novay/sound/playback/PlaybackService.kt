@@ -517,8 +517,10 @@ class PlaybackService : MediaLibraryService() {
         val seed = player.currentMediaItem?.videoId?.takeIf { !it.startsWith("local:") && !it.startsWith("radio:") } ?: return
 
         radioJob = scope.launch {
+            // Sırada olanlar ve son dinlediklerin tekrar eklenmesin
             val existing = (0 until player.mediaItemCount)
-                .map { player.getMediaItemAt(it).videoId }.toSet()
+                .map { player.getMediaItemAt(it).videoId }.toSet() +
+                runCatching { library.getRecent().take(25).map { it.id } }.getOrDefault(emptyList())
             val more = runCatching { youtube.radio(seed) }.getOrDefault(emptyList())
                 .filter { it.id !in existing }
                 .take(25)

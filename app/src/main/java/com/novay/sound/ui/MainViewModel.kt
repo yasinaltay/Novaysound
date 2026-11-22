@@ -178,6 +178,7 @@ class MainViewModel @Inject constructor(
     fun playMood(mood: Mood) = viewModelScope.launch {
         msg("${mood.emoji} ${mood.label} hazırlanıyor…")
         val songs = runCatching { youtube.search(mood.query).songs }.getOrDefault(emptyList())
+            .filter { !com.novay.sound.util.JunkFilter.isJunk(it.title) && com.novay.sound.util.JunkFilter.isSongLength(it.durationSec) }
         if (songs.isEmpty()) msg("Liste yüklenemedi") else player.play(songs.shuffled())
     }
 

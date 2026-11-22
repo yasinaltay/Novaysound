@@ -96,8 +96,8 @@ class HomeViewModel @Inject constructor(
     }
 
     /** Son dinlenen şarkıya benzeyenlerden "Hızlı seçimler". */
-    fun refreshQuickPicks() = viewModelScope.launch {
-        _quickPicks.value = runCatching { generator.quickPicks() }.getOrDefault(emptyList())
+    fun refreshQuickPicks(force: Boolean = false) = viewModelScope.launch {
+        _quickPicks.value = runCatching { generator.quickPicksCached(force) }.getOrDefault(emptyList())
     }
 }
 
@@ -183,7 +183,7 @@ fun HomeScreen(
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     SectionTitle("Hızlı seçimler", Modifier.weight(1f))
-                    IconButton(onClick = { vm.refreshQuickPicks() }, modifier = Modifier.padding(top = 12.dp, end = 4.dp)) {
+                    IconButton(onClick = { vm.refreshQuickPicks(force = true) }, modifier = Modifier.padding(top = 12.dp, end = 4.dp)) {
                         Icon(Icons.Default.Refresh, "Yenile")
                     }
                 }

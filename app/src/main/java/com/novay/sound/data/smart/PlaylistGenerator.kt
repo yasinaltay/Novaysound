@@ -16,8 +16,25 @@ import javax.inject.Singleton
 @Singleton
 class PlaylistGenerator @Inject constructor(
     private val library: LibraryRepository,
-    private val youtube: YouTubeRepository
+    private val youtube: YouTubeRepository,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
+    private val json: kotlinx.serialization.json.Json
 ) {
+    @kotlinx.serialization.Serializable
+    private data class CachedPicks(val at: Long, val songs: List<Song>)
+
+    /** Kayıtlı hızlı seçimler 6 saatten yeniyse onları döndürür; [force] ile her zaman yeniden üretir. */
+    suspend fun quickPicksCached(force: Boolean = false): List<Song> {
+        val file = java.io.File(context.filesDir, "quick_picks.json")
+        if (!force) runCatching { json.decodeFromString(CachedPicks.serializer(), file.readText()) }.getOrNull()
+            ?.takeIf { System.currentTimeMillis() - it.at < 6 * 3_600_000 && it.songs.isNotEmpty() }
+            ?.let { return it.songs }
+        val fresh = quickPicks()
+        if (fresh.isNotEmpty()) runCatching {
+            file.writeText(json.encodeToString(CachedPicks.serializer(), CachedPicks(System.currentTimeMillis(), fresh)))
+        }
+        return fresh
+    }
     /** Sevdiklerin + benzerlerinden, toplamı hedef süreye ±1,5 dk uyan liste. */
     suspend fun byDuration(minutes: Int): List<Song> = coroutineScope {
         val target = minutes * 60L
@@ -89,13 +106,7 @@ class PlaylistGenerator @Inject constructor(
     }
 
     companion object {
-        /** Şarkı olmayan / düşük kaliteli sonuçlar (mix, derleme, slowed, karaoke…). */
-        private val JUNK = Regex(
-            "(?i)(\\bmix\\b|mixtape|full album|tüm albüm|playlist|çalma listesi|\\b\\d+\\s*(saat|hour|hours)\\b|saatlik|karışık|" +
-                "compilation|non-?stop|live stream|canlı yayın|podcast|slowed|reverb|sped up|speed up|\\b8d\\b|nightcore|" +
-                "karaoke|instrumental|enstrümantal|altyapı|type beat|\\bcover\\b|tiktok|shorts|reaction|tepki)"
-        )
-        fun isJunkTitle(title: String): Boolean = JUNK.containsMatchIn(title)
+        fun isJunkTitle(title: String): Boolean = com.novay.sound.util.JunkFilter.isJunk(title)
     }
 
     /** Aynı sanatçının şarkıları arka arkaya gelmesin. */
