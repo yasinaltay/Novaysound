@@ -80,7 +80,7 @@ fun EqualizerScreen(onBack: () -> Unit, vm: EqualizerViewModel = hiltViewModel()
         }
 
         val eq = info
-        if (eq == null) {
+        if (eq == null || eq.maxLevel <= eq.minLevel || eq.bandFreqsHz.isEmpty()) {
             EmptyState(Icons.Default.GraphicEq, "Bir şarkı çalmaya başlayınca ekolayzer ayarları görünür.")
             return@Column
         }

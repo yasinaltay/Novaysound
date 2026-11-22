@@ -15,8 +15,8 @@ android {
         applicationId = "com.novay.sound"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.7.3"
+        versionCode = 11
+        versionName = "0.7.4"
         vectorDrawables { useSupportLibrary = true }
     }
 

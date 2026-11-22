@@ -201,7 +201,7 @@ class YouTubeRepository @Inject constructor(private val flags: FeatureFlags) {
         val handler = service.searchQHFactory.fromQuery(query, listOf(SearchFilter.ARTISTS.value), "")
         SearchInfo.getInfo(service, handler).relatedItems.filterIsInstance<ChannelInfoItem>().map {
             ArtistItem(cleanArtist(it.name), it.url, it.thumbnails.maxByOrNull { t -> t.height }?.url, it.subscriberCount)
-        }
+        }.distinctBy { it.url }
     }
 
     /** Şarkının kanal linki yoksa sanatçı adını aratıp ilk sonucu al. */

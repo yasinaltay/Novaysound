@@ -45,7 +45,7 @@ class Crossfader(
 
     private fun check() {
         if (seconds <= 0 || fader != null || handoff || !main.isPlaying) return
-        if (main.repeatMode == Player.REPEAT_MODE_ONE || !main.hasNextMediaItem()) return
+        if (main.repeatMode == Player.REPEAT_MODE_ONE || !main.hasNextMediaItem() || main.pauseAtEndOfMediaItems) return
         val duration = main.duration
         if (duration <= 0 || duration < seconds * 3000L) return
         val left = duration - main.currentPosition
