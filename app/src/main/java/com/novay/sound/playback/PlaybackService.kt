@@ -77,7 +77,7 @@ class PlaybackService : MediaLibraryService() {
         }
 
         session = MediaLibrarySession.Builder(this, player, LibraryCallback())
-            .apply { openApp?.let(::setSessionActivity) }
+            .apply { openApp?.let { setSessionActivity(it) } }
             .build()
     }
 
