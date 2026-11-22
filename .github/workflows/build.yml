@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,7 +21,23 @@ jobs:
         with:
           gradle-version: 8.11.1
       - run: gradle assembleRelease --no-daemon
+
+      - name: Sürüm adını oku ve APK'yı adlandır
+        id: ver
+        run: |
+          V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          cp app/build/outputs/apk/release/*.apk "NovaySound-v$V.apk"
+
       - uses: actions/upload-artifact@v4
         with:
           name: NovaySound-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: NovaySound-v*.apk
+
+      # Aynı sürüm numarasıyla tekrar derlenirse release'teki APK güncellenir
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Novay Sound v${{ steps.ver.outputs.version }}
+          files: NovaySound-v${{ steps.ver.outputs.version }}.apk
+          make_latest: true
