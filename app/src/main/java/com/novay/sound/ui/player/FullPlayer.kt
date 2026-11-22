@@ -59,6 +59,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -103,10 +105,26 @@ fun FullPlayer(
     val bg = MaterialTheme.colorScheme.background
     val context = androidx.compose.ui.platform.LocalContext.current
 
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val blur = settings.on(com.novay.sound.data.settings.Toggle.BLUR_BG) &&
+        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && song.thumbnailUrl != null
+
+    // Bulanık kapak (Android 12+): en altta, üstüne okunabilirlik için temaya göre perde
+    if (blur) Box(Modifier.fillMaxSize().background(bg)) {
+        coil3.compose.AsyncImage(
+            model = song.thumbnailUrl, contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().blur(70.dp).graphicsLayer { scaleX = 1.3f; scaleY = 1.3f }
+        )
+        Box(Modifier.fillMaxSize().background(
+            Brush.verticalGradient(listOf(bg.copy(alpha = 0.35f), bg.copy(alpha = 0.6f), bg.copy(alpha = 0.92f)))
+        ))
+    }
+
     Box(
         Modifier.fillMaxSize()
-            .background(bg)
-            .background(Brush.verticalGradient(listOf(accent.copy(alpha = 0.40f), bg, bg)))
+            .then(if (blur) Modifier else Modifier.background(bg)
+                .background(Brush.verticalGradient(listOf(accent.copy(alpha = 0.40f), bg, bg))))
             .pointerInput(showLyrics) {   // aşağı kaydırınca kapat (sözler açıkken kapalı)
                 if (showLyrics) return@pointerInput
                 detectVerticalDragGestures(

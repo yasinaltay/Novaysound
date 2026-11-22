@@ -23,6 +23,11 @@ import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.compositionLocalOf
@@ -73,6 +78,33 @@ data class SongActions(
     val removeLabel: String = "Listeden kaldır"
 )
 
+/** Çalan şarkı (id + çalıyor mu): kart ve satırlarda ekolayzer animasyonu için. */
+data class NowPlaying(val id: String? = null, val playing: Boolean = false)
+val LocalNowPlaying = compositionLocalOf { NowPlaying() }
+
+/** Çalan şarkının kapağı üstünde zıplayan 3 çubuk. */
+@Composable
+fun EqualizerBars(modifier: Modifier = Modifier, color: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color.White, animate: Boolean = true) {
+    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "eq")
+    val heights = listOf(0, 180, 360).map { delay ->
+        if (animate) t.animateFloat(
+            initialValue = 0.25f, targetValue = 1f,
+            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                androidx.compose.animation.core.tween(420, delayMillis = delay, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                androidx.compose.animation.core.RepeatMode.Reverse
+            ), label = "bar$delay"
+        ).value else 0.4f
+    }
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
+        heights.forEach { h ->
+            Box(
+                Modifier.width(3.dp).fillMaxHeight(h)
+                    .clip(RoundedCornerShape(2.dp)).background(color)
+            )
+        }
+    }
+}
+
 /** İndirme durumları tüm ekranlara buradan dağıtılır. */
 val LocalDownloads = compositionLocalOf<Map<String, DownloadItem>> { emptyMap() }
 
@@ -104,7 +136,14 @@ fun SongRow(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Artwork(song.thumbnailUrl, Modifier.size(52.dp), corner = 6.dp)
+        Box(contentAlignment = Alignment.Center) {
+            Artwork(song.thumbnailUrl, Modifier.size(52.dp), corner = 6.dp)
+            if (isCurrent) {
+                Box(Modifier.size(52.dp).clip(RoundedCornerShape(6.dp))
+                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f)))
+                EqualizerBars(Modifier.size(18.dp), animate = LocalNowPlaying.current.playing)
+            }
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -187,11 +226,33 @@ fun DownloadBadge(id: String) {
 /** Yatay listelerde kare kart. */
 @Composable
 fun SongCard(song: Song, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by androidx.compose.animation.core.animateFloatAsState(if (pressed) 0.94f else 1f, label = "press")
+    val now = LocalNowPlaying.current
+    val current = now.id == song.id
+    // İlk görünüşte hafif belirme
+    val appear = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) { appear.animateTo(1f, androidx.compose.animation.core.tween(350)) }
+
     Column(
-        modifier = modifier.width(140.dp).clickable(onClick = onClick),
+        modifier = modifier.width(140.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale; alpha = appear.value }
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Artwork(song.thumbnailUrl, Modifier.fillMaxWidth().aspectRatio(1f), corner = 10.dp)
+        Box {
+            Artwork(song.thumbnailUrl, Modifier.fillMaxWidth().aspectRatio(1f), corner = 10.dp)
+            Box(
+                Modifier.align(Alignment.BottomEnd).padding(8.dp).size(36.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center
+            ) {
+                if (current) EqualizerBars(Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, animate = now.playing)
+                else Icon(Icons.Default.PlayArrow, "Çal", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(22.dp))
+            }
+        }
         Text(song.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(
             song.artist, style = MaterialTheme.typography.bodySmall,

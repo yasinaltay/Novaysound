@@ -34,11 +34,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 // ---- Marka renkleri (logo gradyanı) ----
-val BrandCyan = Color(0xFF00E5FF)
-val BrandViolet = Color(0xFF7C4DFF)
-val BrandGradient = Brush.linearGradient(listOf(BrandCyan, BrandViolet))
+val BrandOrange = Color(0xFFFFB000)
+val BrandPink = Color(0xFFFF3D77)
+val BrandViolet = Color(0xFF8E2DE2)
+val BrandGradient = Brush.linearGradient(listOf(BrandOrange, BrandPink, BrandViolet))
 
-fun defaultAccent(dark: Boolean): Color = if (dark) BrandCyan else Color(0xFF5B4BFF)
+fun defaultAccent(dark: Boolean): Color = if (dark) Color(0xFFFF6A8A) else Color(0xFFD81B60)
 
 /** Vurgu rengini temaya göre okunur hale getir. */
 fun adaptAccent(c: Color, dark: Boolean): Color = when {
@@ -122,7 +123,7 @@ private val Poppins = androidx.compose.ui.text.font.FontFamily(
 fun BrandTitle(modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier, fontSize: androidx.compose.ui.unit.TextUnit = 24.sp) {
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val main = if (dark) Color.White else Color(0xFF111318)
-    val accent = if (dark) Color(0xFF5CEBFF) else Color(0xFF007C91)
+    val accent = if (dark) Color(0xFFFF6A8A) else Color(0xFFD81B60)
     androidx.compose.material3.Text(
         text = androidx.compose.ui.text.buildAnnotatedString {
             pushStyle(androidx.compose.ui.text.SpanStyle(color = main)); append("Novay"); pop()

@@ -64,7 +64,7 @@ private fun SmartList.icon(): ImageVector = when (this) {
 private fun SmartList.colors(): List<Color> = when (this) {
     SmartList.MONTH_TOP -> listOf(Color(0xFFFF8A00), Color(0xFFE5294A))
     SmartList.FORGOTTEN -> listOf(Color(0xFF00B4DB), Color(0xFF0083B0))
-    SmartList.DISCOVER -> listOf(Color(0xFF00E5FF), Color(0xFF7C4DFF))
+    SmartList.DISCOVER -> listOf(Color(0xFFFFB000), Color(0xFFFF3D77), Color(0xFF8E2DE2))
 }
 
 /** Ana ekran ve kitaplıkta gösterilen renkli akıllı liste kartları. */

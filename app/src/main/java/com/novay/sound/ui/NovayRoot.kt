@@ -51,6 +51,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.novay.sound.ui.components.AddToPlaylistDialog
 import com.novay.sound.ui.components.LocalDownloads
+import com.novay.sound.ui.components.LocalNowPlaying
+import com.novay.sound.ui.components.NowPlaying
 import com.novay.sound.ui.artist.ArtistScreen
 import com.novay.sound.ui.smart.SmartScreen
 import com.novay.sound.ui.car.CarModeScreen
@@ -102,7 +104,10 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
         LaunchedEffect(Unit) { vm.navigation.collect { route -> showPlayer = false; nav.navigate(route) } }
         NotificationPermission()
 
-        CompositionLocalProvider(LocalDownloads provides downloads) {
+        CompositionLocalProvider(
+            LocalDownloads provides downloads,
+            LocalNowPlaying provides NowPlaying(state.song?.id, state.isPlaying)
+        ) {
 
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             Scaffold(
@@ -111,7 +116,7 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                 bottomBar = {
                     if (nav.currentBackStackEntryAsState().value?.destination?.route != "car") Column {
                         MiniPlayer(state, onOpen = { showPlayer = true },
-                            onToggle = vm.player::togglePlay, onNext = vm.player::next)
+                            onToggle = vm.player::togglePlay, onNext = vm.player::next, onPrevious = vm.player::previous)
                         BottomBar(nav)
                     }
                 }

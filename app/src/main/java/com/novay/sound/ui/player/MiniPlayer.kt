@@ -22,6 +22,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,17 +47,44 @@ fun MiniPlayer(
     state: PlayerState,
     onOpen: () -> Unit,
     onToggle: () -> Unit,
-    onNext: () -> Unit
+    onNext: () -> Unit,
+    onPrevious: () -> Unit = {}
 ) {
     val song = state.song ?: return
     val progress = if (state.durationMs > 0) state.positionMs.toFloat() / state.durationMs else 0f
     val scheme = MaterialTheme.colorScheme
+    // Sola kaydır: sonraki, sağa kaydır: önceki. Kart parmağı izler, bırakınca yerine yaylanır.
+    val scope = rememberCoroutineScope()
+    val offset = remember { Animatable(0f) }
+    val threshold = with(LocalDensity.current) { 90.dp.toPx() }
+    val swipe = Modifier.pointerInput(Unit) {
+        detectHorizontalDragGestures(
+            onDragEnd = {
+                val x = offset.value
+                when {
+                    x < -threshold -> onNext()
+                    x > threshold -> onPrevious()
+                }
+                scope.launch { offset.animateTo(0f, spring(dampingRatio = 0.6f)) }
+            },
+            onDragCancel = { scope.launch { offset.animateTo(0f) } },
+            onHorizontalDrag = { change, amount ->
+                change.consume()
+                scope.launch { offset.snapTo(offset.value + amount * 0.8f) }
+            }
+        )
+    }
     Surface(
         onClick = onOpen,
         shape = RoundedCornerShape(16.dp),
         color = scheme.primary.copy(alpha = 0.14f).compositeOver(scheme.surfaceContainerHigh),
         shadowElevation = 6.dp,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
+            .graphicsLayer {
+                translationX = offset.value
+                alpha = 1f - (kotlin.math.abs(offset.value) / (threshold * 3)).coerceIn(0f, 0.5f)
+            }
+            .then(swipe)
     ) {
         Column {
             Row(Modifier.padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 6.dp),
