@@ -25,6 +25,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Insights
+import com.novay.sound.download.DlState
+import com.novay.sound.ui.components.LocalDownloads
+import com.novay.sound.ui.components.SectionTitle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
@@ -95,7 +99,7 @@ class LibraryViewModel @Inject constructor(
 
     val messages = MutableSharedFlow<String>(extraBufferCapacity = 2)
 
-    fun refreshOffline() = viewModelScope.launch { _offline.value = tree.songsOf(LibraryTree.OFFLINE) }
+    fun refreshOffline() = viewModelScope.launch { _offline.value = tree.cachedOnlySongs() }
     fun createPlaylist(name: String) = viewModelScope.launch { library.createPlaylist(name) }
     fun clearHistory() = viewModelScope.launch { library.clearHistory(); messages.tryEmit("Geçmiş temizlendi") }
     fun unlike(song: Song) = viewModelScope.launch { library.setLiked(song, false) }
@@ -113,13 +117,14 @@ class LibraryViewModel @Inject constructor(
     }
 }
 
-private val TABS = listOf("Favoriler", "Çalma listeleri", "Geçmiş", "Çevrimdışı")
+private val TABS = listOf("Favoriler", "Çalma listeleri", "Geçmiş", "İndirilenler")
 
 @Composable
 fun LibraryScreen(
     actions: SongActions,
     currentId: String?,
     onOpenPlaylist: (Long) -> Unit,
+    onOpenStats: () -> Unit,
     vm: LibraryViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -149,6 +154,7 @@ fun LibraryScreen(
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Kitaplık", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f))
+            IconButton(onClick = onOpenStats) { Icon(Icons.Default.Insights, "İstatistikler") }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Menü") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -208,9 +214,7 @@ fun LibraryScreen(
                 }
             }
             2 -> SongList(recent, currentId, actions) { EmptyState(Icons.Default.History, "Geçmiş boş") }
-            3 -> SongList(offline, currentId, actions) {
-                EmptyState(Icons.Default.CloudOff, "Önbellekte tamamı olan şarkı yok.\nDinlediğin şarkılar otomatik kaydedilir.")
-            }
+            3 -> DownloadsTab(offline, currentId, actions)
         }
     }
 
@@ -228,6 +232,39 @@ fun LibraryScreen(
             confirmButton = { TextButton(onClick = { vm.import(Uri.parse(uri)); confirmImport = null }) { Text("Geri yükle") } },
             dismissButton = { TextButton(onClick = { confirmImport = null }) { Text("İptal") } }
         )
+    }
+}
+
+/** İndirilenler (kalıcı) + otomatik önbellekte tamamı olanlar. */
+@Composable
+private fun DownloadsTab(cached: List<Song>, currentId: String?, actions: SongActions) {
+    val items = LocalDownloads.current.values.sortedByDescending { it.updatedAt }
+    val done = items.filter { it.state == DlState.DONE }.map { it.song }
+    val pending = items.filter { it.state != DlState.DONE }.map { it.song }
+    if (items.isEmpty() && cached.isEmpty()) {
+        EmptyState(Icons.Default.CloudOff, "İndirilmiş şarkı yok.\nŞarkı menüsünden \"İndir\" diyerek internetsiz dinleyebilirsin.")
+        return
+    }
+    val removable = actions.copy(remove = { actions.removeDownload(it.id) }, removeLabel = "İndirmeyi sil")
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+        if (done.isNotEmpty()) {
+            item { PlayShuffleRow(onPlay = { actions.play(done, 0) }, onShuffle = { actions.play(done.shuffled(), 0) }) }
+            itemsIndexed(done, key = { _, s -> "d" + s.id }) { i, song ->
+                SongRow(song, song.id == currentId, removable, onClick = { actions.play(done, i) })
+            }
+        }
+        if (pending.isNotEmpty()) {
+            item { SectionTitle("İndiriliyor") }
+            itemsIndexed(pending, key = { _, s -> "p" + s.id }) { _, song ->
+                SongRow(song, song.id == currentId, removable, onClick = { })
+            }
+        }
+        if (cached.isNotEmpty()) {
+            item { SectionTitle("Önbellekte (otomatik)") }
+            itemsIndexed(cached, key = { _, s -> "c" + s.id }) { i, song ->
+                SongRow(song, song.id == currentId, actions, onClick = { actions.play(cached, i) })
+            }
+        }
     }
 }
 

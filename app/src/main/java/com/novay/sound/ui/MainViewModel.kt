@@ -1,43 +1,70 @@
 package com.novay.sound.ui
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.novay.sound.data.lyrics.Lyrics
+import com.novay.sound.data.lyrics.LyricsRepository
 import com.novay.sound.data.model.Song
 import com.novay.sound.data.repository.LibraryRepository
 import com.novay.sound.data.settings.AppSettings
 import com.novay.sound.data.settings.SettingsRepository
 import com.novay.sound.data.youtube.YouTubeLink
 import com.novay.sound.data.youtube.YouTubeRepository
+import com.novay.sound.download.DownloadTracker
 import com.novay.sound.playback.PlayerConnection
+import com.novay.sound.playback.SleepTimer
 import com.novay.sound.ui.components.SongActions
+import com.novay.sound.update.UpdateInfo
+import com.novay.sound.update.UpdateRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
+
+sealed interface UpdateUi {
+    data object None : UpdateUi
+    data class Available(val info: UpdateInfo) : UpdateUi
+    data class Downloading(val info: UpdateInfo, val progress: Float) : UpdateUi
+    data class Ready(val info: UpdateInfo, val file: File) : UpdateUi
+}
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
     val player: PlayerConnection,
+    val sleepTimer: SleepTimer,
     private val library: LibraryRepository,
     private val youtube: YouTubeRepository,
+    private val downloads: DownloadTracker,
+    private val lyricsRepo: LyricsRepository,
+    private val updates: UpdateRepository,
     settingsRepo: SettingsRepository
 ) : ViewModel() {
 
     val settings = settingsRepo.settings.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
-
     val playerState = player.state
     val playlists = library.playlists.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val downloadItems = downloads.items
 
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val messages = _messages.asSharedFlow()
 
+    /** Ekran geçişi istekleri (ör. sanatçı sayfası). */
+    private val _navigation = MutableSharedFlow<String>(extraBufferCapacity = 2)
+    val navigation = _navigation.asSharedFlow()
+
     /** Çalma listesine eklenmek üzere seçilen şarkı (dialog açık). */
     val playlistTarget = MutableStateFlow<Song?>(null)
+
+    private val _update = MutableStateFlow<UpdateUi>(UpdateUi.None)
+    val update = _update.asStateFlow()
 
     val actions = SongActions(
         play = player::play,
@@ -45,10 +72,21 @@ class MainViewModel @Inject constructor(
         enqueue = { player.enqueue(it); msg("Sıraya eklendi") },
         radio = player::startRadio,
         toggleLike = { s -> viewModelScope.launch { library.toggleLike(s) } },
-        addToPlaylist = { playlistTarget.value = it }
+        addToPlaylist = { playlistTarget.value = it },
+        download = { downloads.download(it); msg("İndiriliyor: ${it.title}") },
+        removeDownload = { downloads.remove(it); msg("İndirme silindi") },
+        downloadAll = { songs -> downloads.downloadAll(songs); msg("${songs.size} şarkı indirilecek") },
+        openArtist = ::openArtist
     )
 
+    init {
+        viewModelScope.launch {
+            if (settingsRepo.current().autoUpdateCheck) checkUpdate(manual = false)
+        }
+    }
+
     fun isLiked(id: String): Flow<Boolean> = library.isLiked(id)
+    suspend fun lyrics(song: Song): Lyrics? = lyricsRepo.get(song)
 
     fun addToPlaylist(playlistId: Long, song: Song) = viewModelScope.launch {
         val added = library.addToPlaylist(playlistId, song)
@@ -62,6 +100,49 @@ class MainViewModel @Inject constructor(
         msg("\"$name\" oluşturuldu")
         playlistTarget.value = null
     }
+
+    fun openArtist(song: Song) = viewModelScope.launch {
+        val url = song.artistUrl ?: youtube.findArtistUrl(song.artist)
+        if (url == null) { msg("Sanatçı bulunamadı"); return@launch }
+        openArtistUrl(url)
+    }
+
+    fun openArtistUrl(url: String) { _navigation.tryEmit("artist?url=${Uri.encode(url)}") }
+
+    // ---------------- Güncelleme ----------------
+
+    fun checkUpdate(manual: Boolean) = viewModelScope.launch {
+        runCatching { updates.check() }
+            .onSuccess { info ->
+                if (info != null) _update.value = UpdateUi.Available(info)
+                else if (manual) msg("Uygulama güncel")
+            }
+            .onFailure { if (manual) msg("Güncelleme denetlenemedi: ${it.message}") }
+    }
+
+    fun downloadUpdate() {
+        val info = (_update.value as? UpdateUi.Available)?.info ?: return
+        viewModelScope.launch {
+            _update.value = UpdateUi.Downloading(info, 0f)
+            runCatching { updates.download(info) { p -> _update.value = UpdateUi.Downloading(info, p) } }
+                .onSuccess { file -> _update.value = UpdateUi.Ready(info, file); installUpdate() }
+                .onFailure { _update.value = UpdateUi.Available(info); msg("İndirme başarısız: ${it.message}") }
+        }
+    }
+
+    fun installUpdate() {
+        val ready = _update.value as? UpdateUi.Ready ?: return
+        if (!updates.canInstall()) {
+            msg("\"Bilinmeyen uygulamaları yükle\" iznini verip tekrar Kur'a dokun")
+            updates.openInstallPermissionSettings()
+            return
+        }
+        updates.install(ready.file)
+    }
+
+    fun dismissUpdate() { _update.value = UpdateUi.None }
+
+    // ---------------- Link / sesli komut ----------------
 
     /** Paylaşılan / yapıştırılan metin YouTube linkiyse işle. Link değilse false. */
     fun handleText(text: String): Boolean {
@@ -101,5 +182,5 @@ class MainViewModel @Inject constructor(
         songs.firstOrNull()?.let(player::startRadio) ?: msg("\"$query\" bulunamadı")
     }
 
-    private fun msg(text: String) { _messages.tryEmit(text) }
+    fun msg(text: String) { _messages.tryEmit(text) }
 }

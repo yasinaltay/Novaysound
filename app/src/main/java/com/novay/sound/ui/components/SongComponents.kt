@@ -17,6 +17,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.compositionLocalOf
+import com.novay.sound.download.DlState
+import com.novay.sound.download.DownloadItem
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Radio
@@ -54,9 +63,16 @@ data class SongActions(
     val radio: (Song) -> Unit,
     val toggleLike: (Song) -> Unit,
     val addToPlaylist: (Song) -> Unit,
+    val download: (Song) -> Unit = {},
+    val removeDownload: (String) -> Unit = {},
+    val downloadAll: (List<Song>) -> Unit = {},
+    val openArtist: (Song) -> Unit = {},
     val remove: ((Song) -> Unit)? = null,
     val removeLabel: String = "Listeden kaldır"
 )
+
+/** İndirme durumları tüm ekranlara buradan dağıtılır. */
+val LocalDownloads = compositionLocalOf<Map<String, DownloadItem>> { emptyMap() }
 
 @Composable
 fun Artwork(url: String?, modifier: Modifier = Modifier, corner: Dp = 8.dp) {
@@ -96,13 +112,16 @@ fun SongRow(
                 color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
-            Text(
-                listOf(song.artist, formatDuration(song.durationSec * 1000)).filter { it.isNotBlank() }
-                    .joinToString(" • "),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1, overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                DownloadBadge(song.id)
+                Text(
+                    listOf(song.artist, formatDuration(song.durationSec * 1000)).filter { it.isNotBlank() }
+                        .joinToString(" • "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         Box {
             IconButton(onClick = { menu = true }) {
@@ -127,7 +146,26 @@ fun SongMenu(song: Song, actions: SongActions, expanded: Boolean, onDismiss: () 
         item("Sıraya ekle", Icons.AutoMirrored.Filled.QueueMusic) { actions.enqueue(song) }
         item("Favori ekle/kaldır", Icons.Default.Favorite) { actions.toggleLike(song) }
         item("Çalma listesine ekle", Icons.AutoMirrored.Filled.PlaylistAdd) { actions.addToPlaylist(song) }
+        when (LocalDownloads.current[song.id]?.state) {
+            null, DlState.FAILED -> item("İndir", Icons.Default.Download) { actions.download(song) }
+            else -> item("İndirmeyi sil", Icons.Default.DeleteOutline) { actions.removeDownload(song.id) }
+        }
+        item("Sanatçıya git", Icons.Default.Person) { actions.openArtist(song) }
         actions.remove?.let { remove -> item(actions.removeLabel, Icons.Default.Delete) { remove(song) } }
+    }
+}
+
+@Composable
+fun DownloadBadge(id: String) {
+    val item = LocalDownloads.current[id] ?: return
+    when (item.state) {
+        DlState.DONE -> Icon(Icons.Default.DownloadDone, "İndirildi", Modifier.size(16.dp).padding(end = 4.dp),
+            tint = MaterialTheme.colorScheme.primary)
+        DlState.DOWNLOADING, DlState.QUEUED -> CircularProgressIndicator(
+            progress = { item.percent / 100f }, modifier = Modifier.size(14.dp).padding(end = 4.dp), strokeWidth = 2.dp
+        )
+        DlState.FAILED -> Icon(Icons.Default.ErrorOutline, "İndirilemedi", Modifier.size(16.dp).padding(end = 4.dp),
+            tint = MaterialTheme.colorScheme.error)
     }
 }
 

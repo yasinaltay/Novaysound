@@ -92,6 +92,7 @@ fun PlaylistScreen(
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Menü") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("Tümünü indir") }, onClick = { menu = false; actions.downloadAll(songs) })
                     DropdownMenuItem(text = { Text("Yeniden adlandır") }, onClick = { menu = false; rename = true })
                     DropdownMenuItem(text = { Text("Listeyi sil") }, onClick = { menu = false; delete = true })
                 }

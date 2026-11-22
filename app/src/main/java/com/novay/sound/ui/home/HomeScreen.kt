@@ -66,7 +66,13 @@ class HomeViewModel @Inject constructor(
     private val _quickPicks = MutableStateFlow<List<Song>>(emptyList())
     val quickPicks = _quickPicks.asStateFlow()
 
-    init { refreshQuickPicks() }
+    private val _trending = MutableStateFlow<List<Song>>(emptyList())
+    val trending = _trending.asStateFlow()
+
+    init {
+        refreshQuickPicks()
+        viewModelScope.launch { _trending.value = runCatching { youtube.trending() }.getOrDefault(emptyList()).take(20) }
+    }
 
     /** Son dinlenen şarkıya benzeyenlerden "Hızlı seçimler". */
     fun refreshQuickPicks() = viewModelScope.launch {
@@ -87,6 +93,7 @@ fun HomeScreen(
     val favorites by vm.favorites.collectAsStateWithLifecycle()
     val mostPlayed by vm.mostPlayed.collectAsStateWithLifecycle()
     val quick by vm.quickPicks.collectAsStateWithLifecycle()
+    val trending by vm.trending.collectAsStateWithLifecycle()
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
         item {
@@ -118,6 +125,7 @@ fun HomeScreen(
             }
         }
 
+        horizontalSection("Türkiye'de trend", trending, actions)
         horizontalSection("Son çalınanlar", recent, actions)
         horizontalSection("Favoriler", favorites, actions)
 

@@ -48,6 +48,17 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.novay.sound.ui.components.AddToPlaylistDialog
+import com.novay.sound.ui.components.LocalDownloads
+import com.novay.sound.ui.artist.ArtistScreen
+import com.novay.sound.ui.stats.StatsScreen
+import com.novay.sound.ui.settings.EqualizerScreen
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
 import com.novay.sound.ui.home.HomeScreen
 import com.novay.sound.ui.library.LibraryScreen
 import com.novay.sound.ui.library.PlaylistScreen
@@ -80,8 +91,13 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
         val actions = vm.actions
         val currentId = state.song?.id
 
+        val downloads by vm.downloadItems.collectAsStateWithLifecycle()
+
         LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+        LaunchedEffect(Unit) { vm.navigation.collect { route -> showPlayer = false; nav.navigate(route) } }
         NotificationPermission()
+
+        CompositionLocalProvider(LocalDownloads provides downloads) {
 
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             Scaffold(
@@ -101,12 +117,27 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                             onOpenSettings = { nav.navigate("settings") })
                     }
                     composable("search") {
-                        SearchScreen(actions, currentId, onLink = vm::handleText)
+                        SearchScreen(actions, currentId, onLink = vm::handleText, onOpenArtist = vm::openArtistUrl)
                     }
                     composable("library") {
-                        LibraryScreen(actions, currentId, onOpenPlaylist = { nav.navigate("playlist/$it") })
+                        LibraryScreen(actions, currentId, onOpenPlaylist = { nav.navigate("playlist/$it") },
+                            onOpenStats = { nav.navigate("stats") })
                     }
-                    composable("settings") { SettingsScreen(onBack = { nav.popBackStack() }) }
+                    composable("settings") {
+                        SettingsScreen(
+                            onBack = { nav.popBackStack() },
+                            onOpenEqualizer = { nav.navigate("equalizer") },
+                            onOpenStats = { nav.navigate("stats") },
+                            onCheckUpdate = { vm.checkUpdate(manual = true) }
+                        )
+                    }
+                    composable("equalizer") { EqualizerScreen(onBack = { nav.popBackStack() }) }
+                    composable("stats") {
+                        StatsScreen(actions, onBack = { nav.popBackStack() }, onOpenArtist = vm::openArtistUrl)
+                    }
+                    composable("artist?url={url}", arguments = listOf(navArgument("url") { type = NavType.StringType })) {
+                        ArtistScreen(actions, currentId, onBack = { nav.popBackStack() })
+                    }
                     composable("playlist/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) {
                         PlaylistScreen(actions, currentId, onBack = { nav.popBackStack() })
                     }
@@ -121,14 +152,18 @@ fun NovayRoot(vm: MainViewModel, darkTheme: Boolean) {
                 val liked by remember(currentId) { vm.isLiked(currentId.orEmpty()) }
                     .collectAsStateWithLifecycle(false)
                 FullPlayer(
-                    state = state, player = vm.player, accent = accent, isLiked = liked,
-                    onLike = actions.toggleLike, onAddToPlaylist = actions.addToPlaylist,
-                    onClose = { showPlayer = false }
+                    state = state, vm = vm, accent = accent, isLiked = liked,
+                    onClose = { showPlayer = false },
+                    onOpenEqualizer = { showPlayer = false; nav.navigate("equalizer") }
                 )
             }
         }
+        }
 
         BackHandler(enabled = showPlayer) { showPlayer = false }
+
+        val update by vm.update.collectAsStateWithLifecycle()
+        UpdateDialog(update, onUpdate = vm::downloadUpdate, onInstall = vm::installUpdate, onDismiss = vm::dismissUpdate)
 
         val target by vm.playlistTarget.collectAsStateWithLifecycle()
         val playlists by vm.playlists.collectAsStateWithLifecycle()
@@ -164,6 +199,40 @@ private fun NavHostController.navigateTab(route: String) = navigate(route) {
     popUpTo(graph.findStartDestination().id) { saveState = true }
     launchSingleTop = true
     restoreState = true
+}
+
+@Composable
+private fun UpdateDialog(update: UpdateUi, onUpdate: () -> Unit, onInstall: () -> Unit, onDismiss: () -> Unit) {
+    val info = when (update) {
+        UpdateUi.None -> return
+        is UpdateUi.Available -> update.info
+        is UpdateUi.Downloading -> update.info
+        is UpdateUi.Ready -> update.info
+    }
+    AlertDialog(
+        onDismissRequest = { if (update !is UpdateUi.Downloading) onDismiss() },
+        title = { Text("Yeni sürüm: v${info.version}") },
+        text = {
+            Column {
+                if (info.notes.isNotBlank()) Text(info.notes.take(600), style = MaterialTheme.typography.bodyMedium)
+                if (update is UpdateUi.Downloading) {
+                    Spacer(Modifier.height(16.dp))
+                    LinearProgressIndicator(progress = { update.progress }, modifier = Modifier.fillMaxWidth())
+                    Text("%${(update.progress * 100).toInt()} indirildi", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            when (update) {
+                is UpdateUi.Available -> TextButton(onClick = onUpdate) { Text("Güncelle") }
+                is UpdateUi.Ready -> TextButton(onClick = onInstall) { Text("Kur") }
+                else -> {}
+            }
+        },
+        dismissButton = {
+            if (update !is UpdateUi.Downloading) TextButton(onClick = onDismiss) { Text("Sonra") }
+        }
+    )
 }
 
 /** Android 13+: bildirim panelindeki oynatıcı kontrolleri için izin iste. */

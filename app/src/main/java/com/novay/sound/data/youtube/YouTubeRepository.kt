@@ -8,6 +8,10 @@ import org.schabi.newpipe.extractor.InfoItem
 import org.schabi.newpipe.extractor.Image
 import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.channel.ChannelInfo
+import org.schabi.newpipe.extractor.channel.ChannelInfoItem
+import org.schabi.newpipe.extractor.channel.tabs.ChannelTabInfo
+import org.schabi.newpipe.extractor.channel.tabs.ChannelTabs
 import org.schabi.newpipe.extractor.linkhandler.SearchQueryHandler
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.search.SearchInfo
@@ -24,8 +28,21 @@ import javax.inject.Singleton
 
 enum class SearchFilter(val value: String) {
     SONGS(YoutubeSearchQueryHandlerFactory.MUSIC_SONGS),   // YouTube Music şarkıları
-    VIDEOS(YoutubeSearchQueryHandlerFactory.VIDEOS)        // normal YouTube videoları
+    VIDEOS(YoutubeSearchQueryHandlerFactory.VIDEOS),       // normal YouTube videoları
+    ARTISTS(YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS) // YouTube Music sanatçıları
 }
+
+data class ArtistItem(val name: String, val url: String, val avatar: String?, val subscribers: Long)
+
+data class Artist(
+    val name: String,
+    val url: String,
+    val avatar: String?,
+    val banner: String?,
+    val subscribers: Long,
+    val popular: List<Song>,
+    val latest: List<Song>
+)
 
 data class SearchPage(
     val songs: List<Song>,
@@ -149,6 +166,37 @@ class YouTubeRepository @Inject constructor() {
             }
             info.name to songs.take(limit)
         }
+
+    // ---------------- Sanatçı ----------------
+
+    suspend fun searchArtists(query: String): List<ArtistItem> = withContext(Dispatchers.IO) {
+        val handler = service.searchQHFactory.fromQuery(query, listOf(SearchFilter.ARTISTS.value), "")
+        SearchInfo.getInfo(service, handler).relatedItems.filterIsInstance<ChannelInfoItem>().map {
+            ArtistItem(cleanArtist(it.name), it.url, it.thumbnails.maxByOrNull { t -> t.height }?.url, it.subscriberCount)
+        }
+    }
+
+    /** Şarkının kanal linki yoksa sanatçı adını aratıp ilk sonucu al. */
+    suspend fun findArtistUrl(name: String): String? =
+        runCatching { searchArtists(name).firstOrNull()?.url }.getOrNull()
+
+    suspend fun artist(url: String): Artist = withContext(Dispatchers.IO) {
+        val info = ChannelInfo.getInfo(service, url)
+        val name = cleanArtist(info.name)
+        val tab = info.tabs.firstOrNull { ChannelTabs.VIDEOS in it.contentFilters } ?: info.tabs.firstOrNull()
+        val latest = tab?.let { runCatching { ChannelTabInfo.getInfo(service, it).relatedItems.toSongs() }.getOrNull() }.orEmpty()
+        val popular = runCatching { search(name, SearchFilter.SONGS).songs }.getOrDefault(emptyList())
+            .filter { it.artist.contains(name, ignoreCase = true) || name.contains(it.artist, ignoreCase = true) }
+            .take(15)
+        Artist(
+            name = name, url = url,
+            avatar = info.avatars.maxByOrNull { it.height }?.url,
+            banner = info.banners.maxByOrNull { it.height }?.url,
+            subscribers = info.subscriberCount,
+            popular = popular.ifEmpty { latest.take(10) },
+            latest = latest
+        )
+    }
 
     // ---------------- Trendler ----------------
 

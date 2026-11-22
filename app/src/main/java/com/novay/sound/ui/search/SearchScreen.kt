@@ -51,6 +51,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.novay.sound.data.model.Song
 import com.novay.sound.data.youtube.SearchFilter
+import com.novay.sound.data.youtube.ArtistItem
+import com.novay.sound.ui.components.Artwork
+import com.novay.sound.ui.artist.formatCount
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import com.novay.sound.data.youtube.SearchPage
 import com.novay.sound.data.youtube.YouTubeRepository
 import com.novay.sound.ui.components.EmptyState
@@ -73,7 +79,12 @@ import javax.inject.Inject
 sealed interface SearchUi {
     data object Idle : SearchUi
     data object Loading : SearchUi
-    data class Results(val songs: List<Song>, val canLoadMore: Boolean, val loadingMore: Boolean = false) : SearchUi
+    data class Results(
+        val songs: List<Song>,
+        val canLoadMore: Boolean,
+        val loadingMore: Boolean = false,
+        val artists: List<ArtistItem> = emptyList()
+    ) : SearchUi
     data class Error(val message: String) : SearchUi
 }
 
@@ -105,9 +116,14 @@ class SearchViewModel @Inject constructor(
         job = viewModelScope.launch {
             _ui.value = SearchUi.Loading
             try {
-                val result = youtube.search(q.trim(), filter.value)
-                page = result
-                _ui.value = SearchUi.Results(result.songs, result.hasMore)
+                if (filter.value == SearchFilter.ARTISTS) {
+                    page = null
+                    _ui.value = SearchUi.Results(emptyList(), false, artists = youtube.searchArtists(q.trim()))
+                } else {
+                    val result = youtube.search(q.trim(), filter.value)
+                    page = result
+                    _ui.value = SearchUi.Results(result.songs, result.hasMore)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -148,6 +164,7 @@ fun SearchScreen(
     actions: SongActions,
     currentId: String?,
     onLink: (String) -> Boolean,
+    onOpenArtist: (String) -> Unit,
     vm: SearchViewModel = hiltViewModel()
 ) {
     val query by vm.query.collectAsStateWithLifecycle()
@@ -199,6 +216,8 @@ fun SearchScreen(
                 label = { Text("Şarkılar") })
             FilterChip(selected = filter == SearchFilter.VIDEOS, onClick = { vm.setFilter(SearchFilter.VIDEOS) },
                 label = { Text("Videolar") })
+            FilterChip(selected = filter == SearchFilter.ARTISTS, onClick = { vm.setFilter(SearchFilter.ARTISTS) },
+                label = { Text("Sanatçılar") })
         }
 
         when (val state = ui) {
@@ -228,8 +247,22 @@ fun SearchScreen(
                 }
                 LaunchedEffect(nearEnd) { if (nearEnd) vm.loadMore() }
 
-                if (state.songs.isEmpty()) EmptyState(Icons.Default.Search, "Sonuç bulunamadı")
+                if (state.songs.isEmpty() && state.artists.isEmpty()) EmptyState(Icons.Default.Search, "Sonuç bulunamadı")
                 LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(vertical = 8.dp)) {
+                    items(state.artists, key = { it.url }) { a ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { onOpenArtist(a.url) }.padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Artwork(a.avatar, Modifier.size(56.dp).clip(CircleShape), corner = 28.dp)
+                            Box(Modifier.width(14.dp))
+                            Column {
+                                Text(a.name, style = MaterialTheme.typography.bodyLarge)
+                                if (a.subscribers > 0) Text("${formatCount(a.subscribers)} abone",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
                     itemsIndexed(state.songs, key = { _, s -> s.id }) { _, song ->
                         // Arama sonucuna dokununca: şarkı + benzerleri (radyo)
                         SongRow(song, song.id == currentId, actions, onClick = { actions.radio(song) })
