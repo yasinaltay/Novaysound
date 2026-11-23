@@ -91,3 +91,18 @@ class JunkFilterTest {
         org.junit.Assert.assertFalse(com.novay.sound.util.JunkFilter.isJunk("Tarkan - Kuzu Kuzu"))
     }
 }
+
+class ConcertParseTest {
+    @org.junit.Test fun sadeceDogruSanatci() {
+        val repo = com.novay.sound.data.concerts.ConcertRepository(okhttp3.OkHttpClient(), kotlinx.serialization.json.Json { ignoreUnknownKeys = true })
+        val body = """{"_embedded":{"events":[
+          {"id":"1","name":"Tarkan Live","url":"u1","dates":{"start":{"localDate":"2027-03-01"}},
+           "_embedded":{"attractions":[{"name":"Tarkan"}],"venues":[{"name":"Uber Arena","city":{"name":"Berlin"}}]}},
+          {"id":"2","name":"Tarkan Tribute","url":"u2","dates":{"start":{"localDate":"2027-04-01"}},
+           "_embedded":{"attractions":[{"name":"Cover Band"}],"venues":[{"name":"X","city":{"name":"Köln"}}]}}
+        ]}}"""
+        val list = repo.parse(body, "Tarkan", "DE")
+        org.junit.Assert.assertEquals(1, list.size)
+        org.junit.Assert.assertEquals("Berlin", list[0].city)
+    }
+}

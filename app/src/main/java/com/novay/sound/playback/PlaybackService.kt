@@ -148,6 +148,7 @@ class PlaybackService : MediaLibraryService() {
                 sponsorEnabled = it.sponsorBlock
                 crossfader.seconds = it.crossfadeSec
                 autoRadio = it.on(Toggle.AUTO_RADIO)
+                player.skipSilenceEnabled = it.on(Toggle.SKIP_SILENCE)
             }
         }
         // Konumu çalarken 15 sn'de bir kaydet

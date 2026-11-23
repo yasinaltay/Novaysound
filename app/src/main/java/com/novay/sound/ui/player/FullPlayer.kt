@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.OndemandVideo
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
@@ -101,6 +102,7 @@ fun FullPlayer(
     var showLyrics by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var showSpeed by rememberSaveable { mutableStateOf(false) }
+    var showVideo by remember { mutableStateOf<Pair<Long, Boolean>?>(null) }  // başlangıç konumu, önceden çalıyor muydu
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
     var dragTotal by remember { mutableFloatStateOf(0f) }
@@ -160,6 +162,13 @@ fun FullPlayer(
                             onClick = { menu = false; onOpenEqualizer() })
                         if (!song.isLocal && !song.isRadio) DropdownMenuItem(text = { Text("Paylaş") }, leadingIcon = { Icon(Icons.Default.Share, null) },
                             onClick = { menu = false; shareSong(context, song) })
+                        if (!song.isLocal && !song.isRadio) DropdownMenuItem(text = { Text("Videoyu izle") },
+                            leadingIcon = { Icon(Icons.Default.OndemandVideo, null) },
+                            onClick = {
+                                menu = false
+                                showVideo = state.positionMs to state.isPlaying
+                                player.pause()
+                            })
                         if (!song.isRadio) DropdownMenuItem(text = { Text("Sanatçıya git") }, leadingIcon = { Icon(Icons.Default.Person, null) },
                             onClick = { menu = false; actions.openArtist(song) })
                         if (!song.isRadio) DropdownMenuItem(text = { Text("Çalma listesine ekle") },
@@ -292,6 +301,13 @@ fun FullPlayer(
         }
     }
 
+    showVideo?.let { (start, wasPlaying) ->
+        VideoDialog(song, start) { pos ->
+            showVideo = null
+            player.seekTo(pos)
+            if (wasPlaying) player.resume()
+        }
+    }
     if (showQueue) QueueSheet(state, player, onDismiss = { showQueue = false })
     if (showSpeed) SpeedSheet(state.speed, state.pitch, onChange = player::setSpeed, onDismiss = { showSpeed = false })
     if (showSleep) SleepTimerSheet(

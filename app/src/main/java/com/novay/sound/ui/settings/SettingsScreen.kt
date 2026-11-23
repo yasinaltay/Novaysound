@@ -93,8 +93,20 @@ class SettingsViewModel @Inject constructor(
     private val repo: SettingsRepository,
     @PlaybackCache private val cache: SimpleCache,
     @DownloadCache private val downloadCache: SimpleCache,
-    private val okHttp: okhttp3.OkHttpClient
+    private val okHttp: okhttp3.OkHttpClient,
+    private val concerts: com.novay.sound.data.concerts.ConcertRepository
 ) : ViewModel() {
+    val concertResult = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    fun saveConcertKey(key: String) = viewModelScope.launch {
+        if (key.isBlank()) { repo.setTicketmasterKey(""); concertResult.value = null; return@launch }
+        concertResult.value = "Kontrol ediliyor…"
+        val err = concerts.test(key)
+        if (err == null) {
+            repo.setTicketmasterKey(key)
+            com.novay.sound.data.follow.NewReleaseWorker.schedule(context)
+            concertResult.value = "Kaydedildi ✓ Takip ettiğin sanatçıların konserleri günde bir kontrol edilir"
+        } else concertResult.value = err
+    }
     fun setBtDevices(addrs: Set<String>) = viewModelScope.launch { repo.setBtDevices(addrs) }
 
     val telegramResult = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
@@ -293,6 +305,7 @@ fun SettingsScreen(
             LinkRow("Şimdi güncelleme denetle", "Sürüm ${BuildConfig.VERSION_NAME}", onCheckUpdate)
             LinkRow("Hata kaydı", "Çökme ve hata ayrıntıları", { showLog = true })
             TelegramSection(s, vm)
+            ConcertSection(s, vm)
         }
 
         Column(
@@ -452,6 +465,28 @@ private fun BluetoothSection(s: AppSettings, vm: SettingsViewModel) {
             Text(name, modifier = Modifier.padding(start = 8.dp))
         }
     }
+}
+
+/** Ticketmaster anahtarı: takip edilen sanatçıların Almanya/Türkiye konserlerini bildir. */
+@Composable
+private fun ConcertSection(s: AppSettings, vm: SettingsViewModel) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    var key by rememberSaveable(s.ticketmasterKey) { mutableStateOf(s.ticketmasterKey) }
+    val result by vm.concertResult.collectAsStateWithLifecycle()
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    LinkRow("Konser bildirimi",
+        if (s.ticketmasterKey.isNotBlank()) "Açık: Almanya ve Türkiye konserleri bildirilir" else "Kapalı (ücretsiz anahtar gerekir)") { open = !open }
+    if (!open) return
+    Text("1) developer.ticketmaster.com'da ücretsiz hesap aç.\n2) \"My Apps\" bölümündeki Consumer Key'i kopyala, buraya yapıştır.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    TextButton(onClick = { uri.openUri("https://developer-acct.ticketmaster.com/user/register") }) { Text("Kayıt sayfasını aç") }
+    androidx.compose.material3.OutlinedTextField(key, { key = it }, label = { Text("Consumer Key") }, singleLine = true,
+        modifier = Modifier.fillMaxWidth())
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = { vm.saveConcertKey(key) }, enabled = key.isNotBlank()) { Text("Kaydet ve test et") }
+        if (s.ticketmasterKey.isNotBlank()) TextButton(onClick = { key = ""; vm.saveConcertKey("") }) { Text("Kapat") }
+    }
+    result?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 }
 
 /** Çökme olunca hata kaydını Telegram botuna gönder. */

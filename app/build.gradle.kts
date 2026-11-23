@@ -15,8 +15,8 @@ android {
         applicationId = "com.novay.sound"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.11.4"
+        versionCode = 22
+        versionName = "0.12.0"
         vectorDrawables { useSupportLibrary = true }
         // Sadece 64-bit ARM (tüm güncel telefonlar): ML Kit'in diğer işlemci kütüphaneleri APK'yı ~70 MB yapıyordu
         ndk { abiFilters += "arm64-v8a" }
@@ -117,6 +117,7 @@ dependencies {
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.media3.database)
     implementation(libs.media3.cast)
+    implementation(libs.media3.ui)
     implementation(libs.media3.hls)
     implementation(libs.mediarouter)
     implementation(libs.reorderable)

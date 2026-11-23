@@ -20,6 +20,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -38,7 +41,8 @@ class DownloadTracker @Inject constructor(
     private val manager: DownloadManager,
     private val json: Json,
     private val settings: SettingsRepository,
-    private val lyrics: LyricsRepository
+    private val lyrics: LyricsRepository,
+    private val library: com.novay.sound.data.repository.LibraryRepository
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _items = MutableStateFlow<Map<String, DownloadItem>>(emptyMap())
@@ -53,6 +57,18 @@ class DownloadTracker @Inject constructor(
             }
             _items.value = initial
             ensurePolling()
+        }
+        // Beğenilenleri Wi-Fi'dayken otomatik indir
+        scope.launch {
+            kotlinx.coroutines.flow.combine(
+                settings.settings.map { it.on(com.novay.sound.data.settings.Toggle.AUTO_DL_LIKED) }.distinctUntilChanged(),
+                library.favorites,
+                unmetered()
+            ) { on, favs, wifi -> if (on && wifi) favs else emptyList() }
+                .collect { favs ->
+                    favs.filter { !it.isLocal && !it.isRadio && _items.value[it.id]?.state != DlState.FAILED }
+                        .take(300).forEach(::download)
+                }
         }
         // "Sadece Wi-Fi'da indir" ayarı
         scope.launch {
@@ -74,6 +90,22 @@ class DownloadTracker @Inject constructor(
             }
         })
     }
+
+    /** Ölçülmeyen (Wi-Fi) ağa bağlı mı? Değiştikçe yayınlar. */
+    private fun unmetered() = kotlinx.coroutines.flow.callbackFlow {
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+        fun now() = cm.getNetworkCapabilities(cm.activeNetwork)
+            ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true
+        trySend(now())
+        val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(n: android.net.Network, c: android.net.NetworkCapabilities) {
+                trySend(c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED))
+            }
+            override fun onLost(n: android.net.Network) { trySend(false) }
+        }
+        cm.registerDefaultNetworkCallback(cb)
+        awaitClose { cm.unregisterNetworkCallback(cb) }
+    }.distinctUntilChanged()
 
     fun isDownloaded(id: String) = _items.value[id]?.state == DlState.DONE
     fun completedSongs(): List<Song> =

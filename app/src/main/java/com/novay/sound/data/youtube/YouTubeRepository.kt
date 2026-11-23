@@ -133,6 +133,23 @@ class YouTubeRepository @Inject constructor(
         AudioSource(best.content, best.format?.mimeType ?: "audio/mp4", best.averageBitrate, parseExpire(best.content))
     }
 
+    data class VideoSource(val videoUrl: String, val audioUrl: String?)
+
+    /** Klip izleme: en fazla 720p mp4 görüntü + en iyi ses; olmazsa birleşik (sesli) akış. */
+    suspend fun resolveVideo(videoId: String): VideoSource = withContext(Dispatchers.IO) {
+        val info = StreamInfo.getInfo(service, videoUrl(videoId))
+        val height = { s: org.schabi.newpipe.extractor.stream.VideoStream -> s.resolution.substringBefore('p').toIntOrNull() ?: 0 }
+        val videoOnly = info.videoOnlyStreams
+            .filter { it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP && it.format == org.schabi.newpipe.extractor.MediaFormat.MPEG_4 }
+            .filter { height(it) in 1..720 }
+            .maxByOrNull(height)
+        val audio = pickBestAudio(info.audioStreams.filter { it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP })
+        if (videoOnly != null && audio != null) return@withContext VideoSource(videoOnly.content, audio.content)
+        val muxed = info.videoStreams.filter { it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP }.maxByOrNull(height)
+            ?: error("Video akışı bulunamadı")
+        VideoSource(muxed.content, null)
+    }
+
     /** Süresi dolan (403) URL'yi unut, bir sonraki istekte yeniden çözülsün. */
     fun invalidate(videoId: String) {
         urlCache.remove("$videoId|false")

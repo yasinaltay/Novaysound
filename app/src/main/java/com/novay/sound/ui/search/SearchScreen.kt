@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
@@ -199,6 +200,26 @@ fun SearchScreen(
     val clipboard = LocalClipboardManager.current
     val focus = remember { FocusRequester() }
 
+    val voice = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { r ->
+        r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let {
+            vm.query.value = it
+            keyboard?.hide()
+            vm.search(it)
+        }
+    }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    fun startVoice() {
+        val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "tr-TR")
+            .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Şarkı veya sanatçı söyle")
+        runCatching { voice.launch(intent) }.onFailure {
+            android.widget.Toast.makeText(context, "Bu cihazda sesle arama yok", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     fun submit(text: String = query) {
         keyboard?.hide()
         if (vm.isLink(text)) { onLink(text); vm.clear() } else vm.search(text)
@@ -223,6 +244,7 @@ fun SearchScreen(
                     if (query.isNotEmpty()) {
                         IconButton(onClick = vm::clear) { Icon(Icons.Default.Close, "Temizle") }
                     } else {
+                        IconButton(onClick = ::startVoice) { Icon(androidx.compose.material.icons.Icons.Default.Mic, "Sesle ara") }
                         IconButton(onClick = {
                             clipboard.getText()?.text?.let { submit(it) }
                         }) { Icon(Icons.Default.ContentPaste, "Linki yapıştır") }

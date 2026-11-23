@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Shuffle
@@ -58,6 +59,7 @@ import com.novay.sound.ui.components.SongRow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -70,8 +72,11 @@ sealed interface ArtistUi {
 @HiltViewModel
 class ArtistViewModel @Inject constructor(
     savedState: SavedStateHandle,
-    private val youtube: YouTubeRepository
+    private val youtube: YouTubeRepository,
+    private val concertsRepo: com.novay.sound.data.concerts.ConcertRepository,
+    private val settings: com.novay.sound.data.settings.SettingsRepository
 ) : ViewModel() {
+    val concerts = MutableStateFlow<List<com.novay.sound.data.concerts.Concert>>(emptyList())
     private val url: String = checkNotNull(savedState.get<String>("url"))
     private val _ui = MutableStateFlow<ArtistUi>(ArtistUi.Loading)
     val ui = _ui.asStateFlow()
@@ -82,6 +87,10 @@ class ArtistViewModel @Inject constructor(
         _ui.value = ArtistUi.Loading
         _ui.value = runCatching { ArtistUi.Ready(youtube.artist(url)) }
             .getOrElse { ArtistUi.Error(it.message ?: "Sanatçı yüklenemedi") }
+        (_ui.value as? ArtistUi.Ready)?.let { r ->
+            val key = settings.settings.first().ticketmasterKey
+            concerts.value = concertsRepo.upcoming(r.artist.name, key)
+        }
     }
 }
 
@@ -96,6 +105,7 @@ fun ArtistScreen(
     vm: ArtistViewModel = hiltViewModel()
 ) {
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val concerts by vm.concerts.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
         when (val s = ui) {
             ArtistUi.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -107,7 +117,8 @@ fun ArtistScreen(
                 s.artist, actions, currentId,
                 following = s.artist.url in followed,
                 onFollow = { onToggleFollow(s.artist.name, s.artist.url, s.artist.avatar) },
-                onOpenAlbum = onOpenAlbum
+                onOpenAlbum = onOpenAlbum,
+                concerts = concerts
             )
         }
         IconButton(onClick = onBack, modifier = Modifier.padding(4.dp)) {
@@ -119,8 +130,10 @@ fun ArtistScreen(
 @Composable
 private fun ArtistContent(
     artist: Artist, actions: SongActions, currentId: String?,
-    following: Boolean, onFollow: () -> Unit, onOpenAlbum: (String) -> Unit
+    following: Boolean, onFollow: () -> Unit, onOpenAlbum: (String) -> Unit,
+    concerts: List<com.novay.sound.data.concerts.Concert> = emptyList()
 ) {
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
     val all = (artist.popular + artist.latest).distinctBy { it.id }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
@@ -173,6 +186,17 @@ private fun ArtistContent(
                     onClick = { all.firstOrNull()?.let(actions.radio) }, enabled = all.isNotEmpty(),
                     modifier = Modifier.size(52.dp)
                 ) { Icon(Icons.Default.Radio, "Sanatçı radyosu") }
+            }
+        }
+        if (concerts.isNotEmpty()) {
+            item { SectionTitle("Konserler") }
+            itemsIndexed(concerts, key = { _, c -> "c" + c.id }) { _, c ->
+                androidx.compose.material3.ListItem(
+                    headlineContent = { Text("${c.city} · ${c.venue}", maxLines = 1) },
+                    supportingContent = { Text(c.date + if (c.country == "TR") " · Türkiye" else " · Almanya") },
+                    leadingContent = { Icon(Icons.Default.Event, null) },
+                    modifier = Modifier.clickable(enabled = c.url.isNotBlank()) { uri.openUri(c.url) }
+                )
             }
         }
         if (artist.popular.isNotEmpty()) {

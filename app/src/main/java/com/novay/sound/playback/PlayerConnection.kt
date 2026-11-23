@@ -155,6 +155,8 @@ class PlayerConnection @Inject constructor(
         }
     }
 
+    fun pause() = withController { it.pause() }
+    fun resume() = withController { if (it.playbackState == Player.STATE_IDLE) it.prepare(); it.play() }
     fun next() = withController { it.seekToNext() }
     fun previous() = withController { it.seekToPrevious() }
     fun seekTo(ms: Long) = withController { it.seekTo(ms) }

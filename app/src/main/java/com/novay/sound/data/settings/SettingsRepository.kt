@@ -33,7 +33,9 @@ enum class Toggle(val key: String, val default: Boolean, val title: String, val 
     AUTO_PLAY_BT("f_auto_play_bt", false, "Bluetooth bağlanınca çal", "Araba/kulaklık bağlanınca kaldığın yerden devam et"),
     EQ_PER_DEVICE("f_eq_per_device", false, "Cihaza özel ekolayzer", "Hoparlör, kulaklık ve her Bluetooth cihazı için ayrı ayar"),
     AUTO_SLEEP("f_auto_sleep", false, "Otomatik uyku zamanlayıcısı", "Gece çalmaya başlayınca zamanlayıcıyı kendiliğinden kur"),
-    ALARM("f_alarm", false, "Müzikli alarm", "Her sabah seçtiğin saatte müzikle uyandır")
+    ALARM("f_alarm", false, "Müzikli alarm", "Her sabah seçtiğin saatte müzikle uyandır"),
+    SKIP_SILENCE("f_skip_silence", false, "Sessizliği atla", "Şarkı başı/sonundaki uzun sessiz kısımları atla"),
+    AUTO_DL_LIKED("f_auto_dl_liked", false, "Beğenilenleri otomatik indir", "Beğendiğin şarkılar Wi-Fi'dayken çevrimdışına iner")
 }
 
 enum class AudioQuality(val label: String) { AUTO("Otomatik"), HIGH("Yüksek"), LOW("Düşük") }
@@ -66,7 +68,8 @@ data class AppSettings(
     val btDevices: Set<String> = emptySet(),        // otomatik çalacak Bluetooth adresleri (boş = tüm ses cihazları)
     val eqProfiles: Map<String, String> = emptyMap(), // çıkış -> "açık|preset|b1,b2,…"
     val telegramToken: String = "",
-    val telegramChatId: String = ""
+    val telegramChatId: String = "",
+    val ticketmasterKey: String = ""
 ) {
     fun on(t: Toggle): Boolean = toggles[t] ?: t.default
 }
@@ -123,7 +126,8 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             eqProfiles = p.asMap().filterKeys { it.name.startsWith("eqp_") }
                 .map { (k, v) -> k.name.removePrefix("eqp_") to v.toString() }.toMap(),
             telegramToken = p[stringPreferencesKey("tg_token")].orEmpty(),
-            telegramChatId = p[stringPreferencesKey("tg_chat")].orEmpty()
+            telegramChatId = p[stringPreferencesKey("tg_chat")].orEmpty(),
+            ticketmasterKey = p[stringPreferencesKey("tm_key")].orEmpty()
         )
     }
 
@@ -151,6 +155,8 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         it[stringPreferencesKey("tg_token")] = token.trim()
         it[stringPreferencesKey("tg_chat")] = chatId.trim()
     }
+
+    suspend fun setTicketmasterKey(key: String) = set { it[stringPreferencesKey("tm_key")] = key.trim() }
 
     suspend fun setAlarmSource(src: String) = set { it[stringPreferencesKey("alarm_source")] = src }
 

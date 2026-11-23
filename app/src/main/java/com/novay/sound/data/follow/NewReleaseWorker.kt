@@ -21,6 +21,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.first
 
 /** Günde bir kez takip edilen sanatçıların son yüklemelerine bakar, yeni şarkı varsa bildirir. */
 class NewReleaseWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
@@ -30,6 +31,8 @@ class NewReleaseWorker(context: Context, params: WorkerParameters) : CoroutineWo
     interface Deps {
         fun follows(): FollowRepository
         fun youtube(): YouTubeRepository
+        fun concerts(): com.novay.sound.data.concerts.ConcertRepository
+        fun settings(): com.novay.sound.data.settings.SettingsRepository
     }
 
     override suspend fun doWork(): Result {
@@ -46,7 +49,26 @@ class NewReleaseWorker(context: Context, params: WorkerParameters) : CoroutineWo
             }
             follows.updateKnown(a.url, ids)
         }
+        checkConcerts(deps)
         return Result.success()
+    }
+
+    /** Takip edilen sanatçıların Almanya/Türkiye konserleri: yeni duyurulanı bir kez bildir. */
+    private suspend fun checkConcerts(deps: Deps) {
+        val key = deps.settings().settings.first().ticketmasterKey
+        if (key.isBlank()) return
+        val prefs = applicationContext.getSharedPreferences("concerts", Context.MODE_PRIVATE)
+        val seen = prefs.getStringSet("seen", emptySet()).orEmpty().toMutableSet()
+        var sent = 0
+        deps.follows().artists.value.forEach { a ->
+            deps.concerts().upcoming(a.name, key).forEach { c ->
+                if (c.id !in seen) {
+                    if (sent++ < 5) notify(a, "🎤 ${a.name} konseri: ${c.city}", "${c.date} · ${c.venue}")
+                    seen += c.id
+                }
+            }
+        }
+        prefs.edit().putStringSet("seen", seen.toList().takeLast(500).toSet()).apply()
     }
 
     private fun notify(a: FollowedArtist, title: String, text: String) {
