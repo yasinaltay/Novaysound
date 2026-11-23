@@ -110,6 +110,33 @@ class PlaybackService : MediaLibraryService() {
     private val likeCommand = SessionCommand(CMD_LIKE, Bundle.EMPTY)
     private val closeCommand = SessionCommand(CMD_CLOSE, Bundle.EMPTY)
     private var closing = false
+    private var currentLiked = false
+    private val dismissedCommand = SessionCommand(androidx.media3.session.MediaNotification.NOTIFICATION_DISMISSED_EVENT_KEY, Bundle.EMPTY)
+
+    /** Kart kaydırılıp silindiyse (müzik sürerken) bildirimi yeniden göster. */
+    private fun repostNotification() {
+        if (closing) return
+        scope.launch {
+            delay(400)
+            if (closing || player.mediaItemCount == 0) return@launch
+            session?.setCustomLayout(ImmutableList.of(likeButton(currentLiked), closeButton))
+        }
+    }
+
+    /** Bazı telefonlar silme olayını bildirmez: çalarken bildirim yoksa geri getir. */
+    private fun watchNotification() = scope.launch {
+        val nm = getSystemService(android.app.NotificationManager::class.java)
+        while (true) {
+            delay(2_000)
+            if (closing || player.mediaItemCount == 0 || player.playbackState == Player.STATE_IDLE) continue
+            val shown = runCatching {
+                nm.activeNotifications.any {
+                    it.id == androidx.media3.session.DefaultMediaNotificationProvider.DEFAULT_NOTIFICATION_ID
+                }
+            }.getOrDefault(true)
+            if (!shown) repostNotification()
+        }
+    }
     private lateinit var crossfader: Crossfader
     private var cast: CastController? = null
 
@@ -146,6 +173,7 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
         observeLikeState()
+        watchNotification()
         scope.launch {
             settings.settings.collect {
                 sponsorEnabled = it.sponsorBlock
@@ -330,7 +358,7 @@ class PlaybackService : MediaLibraryService() {
     @kotlin.OptIn(ExperimentalCoroutinesApi::class)
     private fun observeLikeState() = scope.launch {
         currentId.flatMapLatest { id -> if (id == null) flowOf(false) else library.isLiked(id) }
-            .collect { liked -> session?.setCustomLayout(ImmutableList.of(likeButton(liked), closeButton)) }
+            .collect { liked -> currentLiked = liked; session?.setCustomLayout(ImmutableList.of(likeButton(liked), closeButton)) }
     }
 
     private fun toggleLikeCurrent() {
@@ -569,7 +597,7 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo
         ): MediaSession.ConnectionResult {
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
-                .buildUpon().add(likeCommand).add(closeCommand).build()
+                .buildUpon().add(likeCommand).add(closeCommand).add(dismissedCommand).build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
                 .build()
@@ -584,6 +612,7 @@ class PlaybackService : MediaLibraryService() {
             when (customCommand.customAction) {
                 CMD_LIKE -> toggleLikeCurrent()
                 CMD_CLOSE -> closePlayback()
+                androidx.media3.session.MediaNotification.NOTIFICATION_DISMISSED_EVENT_KEY -> repostNotification()
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
