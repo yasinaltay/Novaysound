@@ -8,6 +8,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -62,6 +63,10 @@ class PlaybackService : MediaLibraryService() {
     companion object {
         const val CMD_LIKE = "novay.LIKE"
         const val CMD_CLOSE = "novay.CLOSE"
+        const val CMD_SHUFFLE = "novay.SHUFFLE"
+        const val CMD_REPEAT = "novay.REPEAT"
+        const val CMD_RADIO = "novay.RADIO"
+        const val AUTO_PACKAGE = "com.google.android.projection.gearhead"
         @Volatile var instance: java.lang.ref.WeakReference<PlaybackService>? = null
         const val ACTION_ALARM = "com.novay.sound.ALARM"
         const val ACTION_AUTOPLAY = "com.novay.sound.AUTOPLAY"
@@ -110,6 +115,11 @@ class PlaybackService : MediaLibraryService() {
 
     private val likeCommand = SessionCommand(CMD_LIKE, Bundle.EMPTY)
     private val closeCommand = SessionCommand(CMD_CLOSE, Bundle.EMPTY)
+    private val shuffleCommand = SessionCommand(CMD_SHUFFLE, Bundle.EMPTY)
+    private val repeatCommand = SessionCommand(CMD_REPEAT, Bundle.EMPTY)
+    private val radioCommand = SessionCommand(CMD_RADIO, Bundle.EMPTY)
+    private val autoControllers = mutableSetOf<MediaSession.ControllerInfo>()
+    private var lastCarAutoPlay = 0L
     private var closing = false
     private var currentLiked = false
     private val dismissedCommand = SessionCommand(androidx.media3.session.MediaNotification.NOTIFICATION_DISMISSED_EVENT_KEY, Bundle.EMPTY)
@@ -172,11 +182,15 @@ class PlaybackService : MediaLibraryService() {
 
         session = MediaLibrarySession.Builder(this, player, LibraryCallback())
             .apply { openApp?.let { setSessionActivity(it) } }
-            .setCustomLayout(ImmutableList.of(likeButton(false), closeButton))
+            .setCustomLayout(layout())
             .build()
 
         observeLikeState()
         instance = java.lang.ref.WeakReference(this)
+        tree.resumeTitle = {
+            if (player.mediaItemCount > 0) player.currentMediaItem?.mediaMetadata?.let { "${it.title} · ${it.artist}" }
+            else queueStore.load()?.let { q -> q.songs.getOrNull(q.index)?.let { "${it.title} · ${it.artist}" } }
+        }
         watchNotification()
         scope.launch {
             settings.settings.collect {
@@ -345,6 +359,65 @@ class PlaybackService : MediaLibraryService() {
             .setSessionCommand(likeCommand)
             .build()
 
+    /**
+     * Düğme sırası: telefondaki medya kartı ilk ikisini (❤️, ✕) gösterir;
+     * Android Auto ayrıca karıştır, tekrar ve radyo düğmelerini gösterir.
+     */
+    private fun layout(): ImmutableList<CommandButton> {
+        val shuffle = runCatching { player.shuffleModeEnabled }.getOrDefault(false)
+        val repeat = runCatching { player.repeatMode }.getOrDefault(Player.REPEAT_MODE_OFF)
+        return ImmutableList.of(
+            likeButton(currentLiked),
+            closeButton,
+            CommandButton.Builder()
+                .setDisplayName(if (shuffle) "Karıştırma: açık" else "Karıştır")
+                .setIconResId(if (shuffle) R.drawable.ic_shuffle_on else R.drawable.ic_shuffle_off)
+                .setSessionCommand(shuffleCommand).build(),
+            CommandButton.Builder()
+                .setDisplayName(when (repeat) { Player.REPEAT_MODE_ONE -> "Tekrar: bu şarkı"; Player.REPEAT_MODE_ALL -> "Tekrar: liste"; else -> "Tekrar" })
+                .setIconResId(when (repeat) { Player.REPEAT_MODE_ONE -> R.drawable.ic_repeat_one; Player.REPEAT_MODE_ALL -> R.drawable.ic_repeat_on; else -> R.drawable.ic_repeat_off })
+                .setSessionCommand(repeatCommand).build(),
+            CommandButton.Builder()
+                .setDisplayName("Bu şarkıdan radyo")
+                .setIconResId(R.drawable.ic_radio)
+                .setSessionCommand(radioCommand).build()
+        )
+    }
+
+    private fun updateLayout() { session?.setCustomLayout(layout()) }
+
+    /** Çalan şarkıdan sonrasını bu şarkının radyosuyla değiştir. */
+    private fun startRadioFromCurrent() = scope.launch {
+        val current = player.currentMediaItem ?: return@launch
+        if (current.mediaMetadata.mediaType == MediaMetadata.MEDIA_TYPE_RADIO_STATION) return@launch
+        val songs = runCatching { youtube.radio(current.videoId) }.getOrDefault(emptyList())
+        if (songs.isEmpty()) return@launch
+        val idx = player.currentMediaItemIndex
+        if (player.mediaItemCount > idx + 1) player.removeMediaItems(idx + 1, player.mediaItemCount)
+        player.shuffleModeEnabled = false
+        player.addMediaItems(songs.map { it.toMediaItem() })
+    }
+
+    /** Android Auto bağlandı: araba ses ayarı + (isteğe bağlı) kaldığın yerden çal. */
+    private fun onCarConnected() {
+        effects.carMode.value = true
+        if (!flags.on(Toggle.AUTO_PLAY_CAR) || player.isPlaying) return
+        if (System.currentTimeMillis() - lastCarAutoPlay < 10 * 60_000) return
+        lastCarAutoPlay = System.currentTimeMillis()
+        scope.launch {
+            delay(1_500)
+            if (player.isPlaying) return@launch
+            if (player.mediaItemCount == 0) restoreQueue()
+            if (player.mediaItemCount == 0) {
+                val songs = library.getRecent().take(50)
+                if (songs.isEmpty()) return@launch
+                player.setMediaItems(songs.map { it.toMediaItem() })
+            }
+            player.prepare()
+            player.play()
+        }
+    }
+
     private val closeButton: CommandButton by lazy {
         CommandButton.Builder()
             .setDisplayName("Kapat")
@@ -369,7 +442,7 @@ class PlaybackService : MediaLibraryService() {
     @kotlin.OptIn(ExperimentalCoroutinesApi::class)
     private fun observeLikeState() = scope.launch {
         currentId.flatMapLatest { id -> if (id == null) flowOf(false) else library.isLiked(id) }
-            .collect { liked -> currentLiked = liked; session?.setCustomLayout(ImmutableList.of(likeButton(liked), closeButton)) }
+            .collect { liked -> currentLiked = liked; updateLayout() }
     }
 
     private fun toggleLikeCurrent() {
@@ -500,6 +573,9 @@ class PlaybackService : MediaLibraryService() {
 
     private inner class PlayerListener : Player.Listener {
 
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = updateLayout()
+        override fun onRepeatModeChanged(repeatMode: Int) = updateLayout()
+
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             // Kilit ekranı sözleri için yapılan meta güncellemesi: şarkı değişmedi
             if (replacingForLyrics || (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED &&
@@ -608,10 +684,19 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo
         ): MediaSession.ConnectionResult {
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
-                .buildUpon().add(likeCommand).add(closeCommand).add(dismissedCommand).build()
+                .buildUpon().add(likeCommand).add(closeCommand).add(dismissedCommand)
+                .add(shuffleCommand).add(repeatCommand).add(radioCommand).build()
+            if (controller.packageName == AUTO_PACKAGE) {
+                autoControllers += controller
+                onCarConnected()
+            }
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
                 .build()
+        }
+
+        override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {
+            if (autoControllers.remove(controller) && autoControllers.isEmpty()) effects.carMode.value = false
         }
 
         override fun onCustomCommand(
@@ -623,6 +708,13 @@ class PlaybackService : MediaLibraryService() {
             when (customCommand.customAction) {
                 CMD_LIKE -> toggleLikeCurrent()
                 CMD_CLOSE -> closePlayback()
+                CMD_SHUFFLE -> player.shuffleModeEnabled = !player.shuffleModeEnabled
+                CMD_REPEAT -> player.repeatMode = when (player.repeatMode) {
+                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                    else -> Player.REPEAT_MODE_OFF
+                }
+                CMD_RADIO -> startRadioFromCurrent()
                 androidx.media3.session.MediaNotification.NOTIFICATION_DISMISSED_EVENT_KEY -> repostNotification()
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
@@ -687,7 +779,8 @@ class PlaybackService : MediaLibraryService() {
             pageSize: Int,
             params: LibraryParams?
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = scope.future {
-            LibraryResult.ofItemList(searchSongs(query).map { it.toMediaItem() }, params)
+            val stations = runCatching { findStations(query).take(3) }.getOrDefault(emptyList())
+            LibraryResult.ofItemList((stations + searchSongs(query)).map { it.toMediaItem() }, params)
         }
 
         // ---- Kuyruğa ekleme (telefon arayüzü, Auto, sesli komut) ----
@@ -715,6 +808,7 @@ class PlaybackService : MediaLibraryService() {
                 if (query != null || single.mediaId.isEmpty()) {
                     return@future playFromSearch(query.orEmpty())
                 }
+                actionItems(single.mediaId)?.let { return@future it }
                 // Android Auto'da listeden şarkı seçildi -> tüm listeyi kuyruğa al
                 val parent = single.mediaId.substringBeforeLast('/', "")
                 if (parent.isNotEmpty()) {
@@ -763,11 +857,77 @@ class PlaybackService : MediaLibraryService() {
             .getOrElse { library.searchLocal(query) } // internet yoksa kitaplıkta ara
             .ifEmpty { library.searchLocal(query) }
 
-    /** Boş komut ("müzik çal") -> karışık favoriler, yoksa son çalınanlar. */
+    /** Auto'daki "Devam et", "Favorileri karıştır" ve ruh hali öğeleri. */
+    private suspend fun actionItems(mediaId: String): MediaItemsWithStartPosition? = when {
+        mediaId == LibraryTree.RESUME -> queueStore.load()?.let { q ->
+            MediaItemsWithStartPosition(q.songs.map { it.toMediaItem() }, q.index.coerceIn(0, q.songs.lastIndex), q.positionMs)
+        }
+        mediaId == LibraryTree.SHUFFLE_FAV -> list(library.getFavorites().shuffled().ifEmpty { library.getRecent() })
+        mediaId.startsWith(LibraryTree.MOOD_PREFIX) ->
+            runCatching { com.novay.sound.data.smart.Mood.valueOf(mediaId.removePrefix(LibraryTree.MOOD_PREFIX)) }.getOrNull()
+                ?.let { list(tree.moodSongs(it)) }
+        else -> null
+    }
+
+    private fun list(songs: List<Song>) = MediaItemsWithStartPosition(songs.map { it.toMediaItem() }, 0, C.TIME_UNSET)
+
+    private suspend fun findStations(query: String): List<Song> {
+        val key = com.novay.sound.data.radio.radioKey(query)
+        if (key.length < 2) return emptyList()
+        val fav = radio.favorites.value.filter { com.novay.sound.data.radio.radioKey(it.title).contains(key) }
+        if (fav.isNotEmpty()) return fav
+        return runCatching { radio.search(com.novay.sound.data.radio.RadioCountry.TR, query) }.getOrDefault(emptyList())
+            .ifEmpty { runCatching { radio.search(com.novay.sound.data.radio.RadioCountry.DE, query) }.getOrDefault(emptyList()) }
+    }
+
+    /**
+     * Sesli komut: "Hey Google, Novay'da …"
+     *  - boş / "favorilerimi çal" -> karışık favoriler   - "indirilenler" -> çevrimdışı
+     *  - "türkü", "karadeniz", "spor"… -> ruh hali listesi
+     *  - "<liste adı>" -> kendi çalma listen
+     *  - "TRT FM aç", "Power radyo" -> radyo istasyonu
+     *  - "Tarkan radyosu" -> o sanatçı/şarkıdan sonsuz radyo
+     *  - diğer her şey -> arama
+     */
     private suspend fun playFromSearch(query: String): MediaItemsWithStartPosition {
-        val songs = if (query.isBlank()) {
-            library.getFavorites().shuffled().ifEmpty { library.getRecent() }
-        } else searchSongs(query)
-        return MediaItemsWithStartPosition(songs.map { it.toMediaItem() }, 0, C.TIME_UNSET)
+        val tr = java.util.Locale.forLanguageTag("tr")
+        val q = query.lowercase(tr).replace(Regex("\\b(çal|oynat|aç|dinle|başlat|novay|sound|da|de|'da|'de)\\b"), " ")
+            .replace(Regex("\\s+"), " ").trim()
+        if (q.isBlank() || Regex("favori|beğendi").containsMatchIn(q)) {
+            return list(library.getFavorites().shuffled().ifEmpty { library.getRecent() })
+        }
+        if (Regex("indirilen|çevrimdışı|offline").containsMatchIn(q)) return list(tree.songsOf(LibraryTree.OFFLINE).shuffled())
+        if (Regex("devam|kaldığım").containsMatchIn(q)) actionItems(LibraryTree.RESUME)?.let { return it }
+
+        moodFor(q)?.let { mood -> tree.moodSongs(mood).takeIf { it.isNotEmpty() }?.let { return list(it) } }
+
+        library.getPlaylists().firstOrNull { q == it.playlist.name.lowercase(tr) || (it.playlist.name.length > 3 && q.contains(it.playlist.name.lowercase(tr))) }
+            ?.let { p -> library.getPlaylistSongs(p.playlist.id).takeIf { it.isNotEmpty() }?.let { return list(it) } }
+
+        val radioWord = Regex("\\b(radyo|radyosu|radio|fm)\\b")
+        if (radioWord.containsMatchIn(q)) {
+            findStations(q.replace(Regex("\\b(radyosu|radyo)\\b"), "").trim().ifEmpty { q })
+                .firstOrNull()?.let { return list(listOf(it)) }
+            // İstasyon değilse: sanatçı/şarkıdan sonsuz radyo
+            val seed = searchSongs(q.replace(radioWord, "").trim()).firstOrNull()
+            if (seed != null) {
+                val rest = runCatching { youtube.radio(seed.id) }.getOrDefault(emptyList())
+                return list(listOf(seed) + rest)
+            }
+        }
+        return list(searchSongs(query))
+    }
+
+    private fun moodFor(q: String): com.novay.sound.data.smart.Mood? {
+        val M = com.novay.sound.data.smart.Mood
+        val words = mapOf(
+            M.TURKU to "türkü|halk|bağlama", M.KARADENIZ to "karadeniz|horon|kemençe",
+            M.SPORT to "spor|antrenman|koşu", M.FOCUS to "odak|çalışma|ders|lofi", M.ROAD to "yol|yolculuk|araba",
+            M.CALM to "sakin|rahat", M.PARTY to "parti|eğlence|hareketli", M.ROMANTIC to "romantik|aşk",
+            M.SAD to "hüzün|hüzünlü|duygusal|acıklı", M.RAP to "rap|hip hop"
+        )
+        // Sadece "türkü", "türküler", "karadeniz şarkıları" gibi komutlar; "aşk olsun" gibi şarkı adları aramaya gider
+        val stripped = q.replace(Regex("\\b(şarkı\\w*|müzi\\w*|liste\\w*|karışık)\\b"), " ").replace(Regex("\\s+"), " ").trim()
+        return words.entries.firstOrNull { (_, w) -> Regex("^($w)\\w*$").matches(stripped) }?.key
     }
 }

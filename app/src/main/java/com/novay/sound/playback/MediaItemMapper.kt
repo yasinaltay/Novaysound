@@ -33,7 +33,9 @@ fun Song.toMediaItem(parent: String? = null): MediaItem =
                 .setTitle(title)
                 .setArtist(artist)
                 .setDisplayTitle(title)
-                .setSubtitle(artist)
+                .setSubtitle(
+                    if (durationSec > 0 && !isRadio) "$artist · ${durationSec / 60}:${"%02d".format(durationSec % 60)}" else artist
+                )
                 .setArtworkUri(thumbnailUrl?.let(Uri::parse))
                 .setIsPlayable(true)
                 .setIsBrowsable(false)

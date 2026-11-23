@@ -35,7 +35,9 @@ enum class Toggle(val key: String, val default: Boolean, val title: String, val 
     AUTO_SLEEP("f_auto_sleep", false, "Otomatik uyku zamanlayıcısı", "Gece çalmaya başlayınca zamanlayıcıyı kendiliğinden kur"),
     ALARM("f_alarm", false, "Müzikli alarm", "Her sabah seçtiğin saatte müzikle uyandır"),
     SKIP_SILENCE("f_skip_silence", false, "Sessizliği atla", "Şarkı başı/sonundaki uzun sessiz kısımları atla"),
-    AUTO_DL_LIKED("f_auto_dl_liked", false, "Beğenilenleri otomatik indir", "Beğendiğin şarkılar Wi-Fi'dayken çevrimdışına iner")
+    AUTO_DL_LIKED("f_auto_dl_liked", false, "Beğenilenleri otomatik indir", "Beğendiğin şarkılar Wi-Fi'dayken çevrimdışına iner"),
+    AUTO_PLAY_CAR("f_auto_play_car", false, "Arabaya binince çal", "Android Auto bağlanınca kaldığın şarkıdan devam et"),
+    CAR_SOUND("f_car_sound", true, "Araba ses ayarı", "Android Auto'dayken bas/tiz güçlendirme ve ses dengeleme (cihaza özel profil yoksa)")
 }
 
 enum class AudioQuality(val label: String) { AUTO("Otomatik"), HIGH("Yüksek"), LOW("Düşük") }

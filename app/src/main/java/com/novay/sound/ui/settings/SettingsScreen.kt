@@ -212,8 +212,14 @@ fun SettingsScreen(
         SettingsCard("Özellikler") {
             listOf(
                 Toggle.KEEP_PLAYING, Toggle.AUTO_RADIO, Toggle.CLEAN_TITLES, Toggle.DEDUPE, Toggle.SHOW_SMART, Toggle.SHOW_MOODS,
-                Toggle.SHOW_QUICK, Toggle.SHOW_TRENDING, Toggle.RECORD_STATS, Toggle.SEARCH_HISTORY, Toggle.LYRICS_TRANSLATE, Toggle.LEARN_MODE, Toggle.BLUR_BG, Toggle.LOCK_LYRICS
+                Toggle.SHOW_QUICK, Toggle.SHOW_TRENDING, Toggle.RECORD_STATS, Toggle.SEARCH_HISTORY, Toggle.LYRICS_TRANSLATE, Toggle.LEARN_MODE, Toggle.BLUR_BG, Toggle.LOCK_LYRICS,
+                Toggle.SKIP_SILENCE, Toggle.AUTO_DL_LIKED
             ).forEach { t -> SwitchRow(t.title, t.subtitle, s.on(t)) { vm.setToggle(t, it) } }
+        }
+
+        SettingsCard("Android Auto") {
+            listOf(Toggle.AUTO_PLAY_CAR, Toggle.CAR_SOUND)
+                .forEach { t -> SwitchRow(t.title, t.subtitle, s.on(t)) { vm.setToggle(t, it) } }
         }
 
         SettingsCard("Bluetooth") { BluetoothSection(s, vm) }

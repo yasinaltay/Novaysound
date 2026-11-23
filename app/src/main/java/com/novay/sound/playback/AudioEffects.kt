@@ -41,6 +41,9 @@ class AudioEffects @Inject constructor(
     private var dynamics: DynamicsProcessing? = null
     private var enhancer: android.media.audiofx.LoudnessEnhancer? = null
 
+    /** Android Auto bağlıyken true (PlaybackService ayarlar). */
+    val carMode = MutableStateFlow(false)
+
     private val _info = MutableStateFlow<EqInfo?>(null)
     val info = _info.asStateFlow()
 
@@ -81,14 +84,30 @@ class AudioEffects @Inject constructor(
             .onFailure { CrashLogger.log("Ses yükseltme açılamadı", it) }.getOrNull()
         // Ayar veya ses çıkışı (hoparlör/kulaklık/Bluetooth) değişince yeniden uygula
         job = scope.launch {
-            kotlinx.coroutines.flow.combine(settings.settings, output.current) { s, o -> s to o }
-                .collect { (s, o) -> apply(s, o.key) }
+            kotlinx.coroutines.flow.combine(settings.settings, output.current, carMode) { s, o, car -> Triple(s, o, car) }
+                .collect { (s, o, car) -> apply(s, o.key, car) }
         }
     }
 
-    private fun apply(s: AppSettings, outputKey: String) {
+    /** Araba için eğri: bas +4 dB, orta düz, üst orta +1 dB, tiz +3 dB (millibel). */
+    private fun carLevels(): List<Int>? {
+        val info = _info.value ?: return null
+        return info.bandFreqsHz.map { hz ->
+            when {
+                hz < 250 -> 400
+                hz < 1000 -> 0
+                hz < 4000 -> 100
+                else -> 300
+            }.coerceIn(info.minLevel, info.maxLevel)
+        }
+    }
+
+    private fun apply(s: AppSettings, outputKey: String, car: Boolean = false) {
         // Cihaza özel profil varsa onu, yoksa genel ayarı kullan
-        val profile = if (s.on(com.novay.sound.data.settings.Toggle.EQ_PER_DEVICE)) s.eqProfiles[outputKey]?.let(::parseProfile) else null
+        val deviceProfile = if (s.on(com.novay.sound.data.settings.Toggle.EQ_PER_DEVICE)) s.eqProfiles[outputKey]?.let(::parseProfile) else null
+        val carProfile = if (car && deviceProfile == null && s.on(com.novay.sound.data.settings.Toggle.CAR_SOUND))
+            carLevels()?.let { Triple(true, -1, it) } else null
+        val profile = deviceProfile ?: carProfile
         val on = profile?.first ?: s.eqEnabled
         val preset = profile?.second ?: s.eqPreset
         val levels = profile?.third ?: s.eqBands
@@ -102,10 +121,11 @@ class AudioEffects @Inject constructor(
                 }
             }
         }
-        dynamics?.runCatching { enabled = s.normalize }
+        dynamics?.runCatching { enabled = s.normalize || carProfile != null }
+        val boost = if (carProfile != null) maxOf(s.boostDb, 2) else s.boostDb
         enhancer?.runCatching {
-            setTargetGain(s.boostDb * 100) // millibel
-            enabled = s.boostDb > 0
+            setTargetGain(boost * 100) // millibel
+            enabled = boost > 0
         }
     }
 

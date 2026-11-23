@@ -51,6 +51,11 @@ class LibraryTree @Inject constructor(
         const val RADIO_TR = "radio_tr"
         const val RADIO_DE = "radio_de"
         const val RADIO_FAV = "radio_fav"
+        const val CONTINUE = "continue"
+        const val MOODS = "moods"
+        const val MOOD_PREFIX = "mood:"
+        const val RESUME = "action:resume"
+        const val SHUFFLE_FAV = "action:shuffle_fav"
     }
 
     val root: MediaItem = folder(ROOT, "Novay Sound")
@@ -64,6 +69,8 @@ class LibraryTree @Inject constructor(
     )
 
     private val discoverFolders = listOf(
+        folder(CONTINUE, "▶ Devam et"),
+        folder(MOODS, "Ruh hali", gridChildren = true),
         folder(FOR_YOU, "Senin için (radyo)"),
         folder(SMART_PREFIX + SmartList.DISCOVER.name, SmartList.DISCOVER.title),
         folder(TRENDING, "Türkiye'de trend"),
@@ -90,8 +97,31 @@ class LibraryTree @Inject constructor(
         return songs.ifEmpty { library.getRecent() }
     }
 
+    private val moodCache = java.util.concurrent.ConcurrentHashMap<com.novay.sound.data.smart.Mood, Pair<Long, List<Song>>>()
+
+    /** Ruh hali listesi (1 saat önbellek, ayıklanmış, karışık). */
+    suspend fun moodSongs(mood: com.novay.sound.data.smart.Mood): List<Song> {
+        moodCache[mood]?.takeIf { System.currentTimeMillis() - it.first < 3_600_000 }?.let { return it.second.shuffled() }
+        val songs = runCatching { youtube.search(mood.query).songs }.getOrDefault(emptyList())
+            .filter { !com.novay.sound.util.JunkFilter.isJunk(it.title) && com.novay.sound.util.JunkFilter.isSongLength(it.durationSec) }
+        if (songs.isNotEmpty()) moodCache[mood] = System.currentTimeMillis() to songs
+        return songs.shuffled()
+    }
+
+    /** "Devam et": kaldığın yer + favorileri karıştır + son çalınanlar. */
+    private suspend fun continueItems(resumeTitle: String?): List<MediaItem> = buildList {
+        if (resumeTitle != null) add(action(RESUME, "Kaldığın yerden devam", resumeTitle))
+        add(action(SHUFFLE_FAV, "Favorileri karıştır", "Beğendiğin şarkılar karışık"))
+        addAll(library.getRecent().take(15).map { it.toMediaItem(parent = RECENT) })
+    }
+
+    /** PlaybackService kaldığın şarkının adını verir. */
+    @Volatile var resumeTitle: (() -> String?)? = null
+
     suspend fun children(parentId: String): List<MediaItem> = when (parentId) {
         ROOT -> categories
+        CONTINUE -> continueItems(resumeTitle?.invoke())
+        MOODS -> com.novay.sound.data.smart.Mood.entries.map { action(MOOD_PREFIX + it.name, "${it.emoji} ${it.label}", null) }
         TAB_DISCOVER -> discoverFolders
         TAB_LIBRARY -> libraryFolders
         PLAYLISTS -> library.getPlaylists().map {
@@ -142,6 +172,20 @@ class LibraryTree @Inject constructor(
         val dl = downloads.completedSongs().map { it.id }.toSet()
         return library.getSongs(ids).filter { it.id !in dl }
     }
+
+    /** Dokununca hemen çalan öğe (klasör değil). */
+    private fun action(id: String, title: String, subtitle: String?) = MediaItem.Builder()
+        .setMediaId(id)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(title)
+                .setSubtitle(subtitle)
+                .setIsBrowsable(false)
+                .setIsPlayable(true)
+                .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
+                .build()
+        )
+        .build()
 
     private fun folder(
         id: String,
