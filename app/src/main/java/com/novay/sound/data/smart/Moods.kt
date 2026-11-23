@@ -9,5 +9,7 @@ enum class Mood(val label: String, val emoji: String, val query: String) {
     PARTY("Parti", "🎉", "türkçe parti şarkıları"),
     ROMANTIC("Romantik", "❤️", "romantik türkçe aşk şarkıları"),
     SAD("Hüzünlü", "🌧️", "hüzünlü türkçe şarkılar"),
-    RAP("Türkçe Rap", "🎤", "türkçe rap hit")
+    RAP("Türkçe Rap", "🎤", "türkçe rap hit"),
+    KARADENIZ("Karadeniz", "🌊", "karadeniz şarkıları kemençe horon"),
+    TURKU("Türküler", "🪕", "türküler bağlama halk müziği")
 }
