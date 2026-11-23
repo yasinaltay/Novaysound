@@ -118,12 +118,10 @@ class PlaybackService : MediaLibraryService() {
     private fun repostNotification() {
         if (closing) return
         scope.launch {
-            delay(400)
+            delay(100)
             if (closing || player.mediaItemCount == 0) return@launch
-            // Aynı düzeni tekrar vermek bildirimi yenilemeyebilir: önce farklı, sonra asıl düzen
-            session?.setCustomLayout(ImmutableList.of(closeButton))
-            delay(150)
-            session?.setCustomLayout(ImmutableList.of(likeButton(currentLiked), closeButton))
+            // YouTube Music gibi: kaydırılıp silinen kartı hemen yeniden göster
+            session?.let { onUpdateNotification(it, true) }
         }
     }
 
@@ -131,11 +129,12 @@ class PlaybackService : MediaLibraryService() {
     private fun watchNotification() = scope.launch {
         val nm = getSystemService(android.app.NotificationManager::class.java)
         while (true) {
-            delay(2_000)
+            delay(700)
             if (closing || player.mediaItemCount == 0 || player.playbackState == Player.STATE_IDLE) continue
             val shown = runCatching {
                 nm.activeNotifications.any {
-                    it.id == androidx.media3.session.DefaultMediaNotificationProvider.DEFAULT_NOTIFICATION_ID
+                    it.id == androidx.media3.session.DefaultMediaNotificationProvider.DEFAULT_NOTIFICATION_ID ||
+                        it.notification.channelId == androidx.media3.session.DefaultMediaNotificationProvider.DEFAULT_CHANNEL_ID
                 }
             }.getOrDefault(true)
             if (!shown) repostNotification()
