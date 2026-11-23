@@ -109,7 +109,7 @@ class PlaybackService : MediaLibraryService() {
 
     private val likeCommand = SessionCommand(CMD_LIKE, Bundle.EMPTY)
     private val closeCommand = SessionCommand(CMD_CLOSE, Bundle.EMPTY)
-    private var idleStopJob: kotlinx.coroutines.Job? = null
+    private var closing = false
     private lateinit var crossfader: Crossfader
     private var cast: CastController? = null
 
@@ -234,6 +234,15 @@ class PlaybackService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     /**
+     * Bildirim/medya kartı duraklatılınca da sabit kalsın: kaydırarak kapanmaz, sadece ✕ ile kapanır.
+     * (Servis ön planda kaldıkça Android kartı kaydırmaya izin vermez.)
+     */
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        val active = !closing && session.player.mediaItemCount > 0 && session.player.playbackState != Player.STATE_IDLE
+        super.onUpdateNotification(session, startInForegroundRequired || active)
+    }
+
+    /**
      * Uygulama son kullanılanlardan kaydırılınca: varsayılan olarak müzik durur ve servis kapanır.
      * "Uygulama kapatılınca çalmaya devam et" açıksa ve çalıyorsa devam eder.
      */
@@ -308,7 +317,7 @@ class PlaybackService : MediaLibraryService() {
 
     /** Müziği durdur, bildirimi ve medya kartını kaldır, servisi kapat (sıra kaydedilir, sonra kaldığın yerden açılır). */
     private fun closePlayback() {
-        idleStopJob?.cancel()
+        closing = true
         saveQueue(sync = true)
         flushListen()
         crossfader.cancel()
@@ -484,6 +493,7 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) closing = false
             if (isPlaying) {
                 maybeAutoSleep()
                 if (alarmPending) {
@@ -494,11 +504,7 @@ class PlaybackService : MediaLibraryService() {
             if (isPlaying) crossfader.onMainPlaying()
             else if (!crossfader.isHandoff && player.playbackState != Player.STATE_BUFFERING) crossfader.cancel()
             if (isPlaying) playingSince = SystemClock.elapsedRealtime() else pauseListenClock()
-            // 15 dk duraklatılmış kalırsa bildirimi kaldır (kart sağa kaydırılarak da kapatılabilir)
-            idleStopJob?.cancel()
-            if (!isPlaying && !player.playWhenReady && player.playbackState != Player.STATE_IDLE) {
-                idleStopJob = scope.launch { delay(15 * 60_000L); if (!player.isPlaying && !player.playWhenReady) closePlayback() }
-            }
+
             // "Şarkı bitince dur" tetiklendiyse zamanlayıcıyı kapat
             if (!isPlaying && sleepTimer.state.value.endOfSong && player.playbackState == Player.STATE_READY &&
                 !player.playWhenReady
