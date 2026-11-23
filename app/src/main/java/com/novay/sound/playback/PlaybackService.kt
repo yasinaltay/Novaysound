@@ -61,6 +61,7 @@ class PlaybackService : MediaLibraryService() {
 
     companion object {
         const val CMD_LIKE = "novay.LIKE"
+        const val CMD_CLOSE = "novay.CLOSE"
         const val ACTION_ALARM = "com.novay.sound.ALARM"
         const val ACTION_AUTOPLAY = "com.novay.sound.AUTOPLAY"
         private const val ALARM_NOTIFICATION = 77
@@ -107,6 +108,8 @@ class PlaybackService : MediaLibraryService() {
     private var playingSince: Long? = null
 
     private val likeCommand = SessionCommand(CMD_LIKE, Bundle.EMPTY)
+    private val closeCommand = SessionCommand(CMD_CLOSE, Bundle.EMPTY)
+    private var idleStopJob: kotlinx.coroutines.Job? = null
     private lateinit var crossfader: Crossfader
     private var cast: CastController? = null
 
@@ -139,7 +142,7 @@ class PlaybackService : MediaLibraryService() {
 
         session = MediaLibrarySession.Builder(this, player, LibraryCallback())
             .apply { openApp?.let { setSessionActivity(it) } }
-            .setCustomLayout(ImmutableList.of(likeButton(false)))
+            .setCustomLayout(ImmutableList.of(likeButton(false), closeButton))
             .build()
 
         observeLikeState()
@@ -238,11 +241,7 @@ class PlaybackService : MediaLibraryService() {
         val keep = flags.on(Toggle.KEEP_PLAYING) && player.playWhenReady && player.mediaItemCount > 0 &&
             player.playbackState != Player.STATE_ENDED
         if (keep) return
-        saveQueue(sync = true)
-        session?.player?.pause()
-        player.pause()
-        player.stop()
-        stopSelf()
+        closePlayback()
     }
 
     override fun onDestroy() {
@@ -299,10 +298,30 @@ class PlaybackService : MediaLibraryService() {
             .setSessionCommand(likeCommand)
             .build()
 
+    private val closeButton: CommandButton by lazy {
+        CommandButton.Builder()
+            .setDisplayName("Kapat")
+            .setIconResId(R.drawable.ic_close)
+            .setSessionCommand(closeCommand)
+            .build()
+    }
+
+    /** Müziği durdur, bildirimi ve medya kartını kaldır, servisi kapat (sıra kaydedilir, sonra kaldığın yerden açılır). */
+    private fun closePlayback() {
+        idleStopJob?.cancel()
+        saveQueue(sync = true)
+        flushListen()
+        crossfader.cancel()
+        session?.player?.let { if (it !== player) { it.pause(); it.stop() } }
+        player.pause()
+        player.stop()
+        stopSelf()
+    }
+
     @kotlin.OptIn(ExperimentalCoroutinesApi::class)
     private fun observeLikeState() = scope.launch {
         currentId.flatMapLatest { id -> if (id == null) flowOf(false) else library.isLiked(id) }
-            .collect { liked -> session?.setCustomLayout(ImmutableList.of(likeButton(liked))) }
+            .collect { liked -> session?.setCustomLayout(ImmutableList.of(likeButton(liked), closeButton)) }
     }
 
     private fun toggleLikeCurrent() {
@@ -475,6 +494,11 @@ class PlaybackService : MediaLibraryService() {
             if (isPlaying) crossfader.onMainPlaying()
             else if (!crossfader.isHandoff && player.playbackState != Player.STATE_BUFFERING) crossfader.cancel()
             if (isPlaying) playingSince = SystemClock.elapsedRealtime() else pauseListenClock()
+            // 15 dk duraklatılmış kalırsa bildirimi kaldır (kart sağa kaydırılarak da kapatılabilir)
+            idleStopJob?.cancel()
+            if (!isPlaying && !player.playWhenReady && player.playbackState != Player.STATE_IDLE) {
+                idleStopJob = scope.launch { delay(15 * 60_000L); if (!player.isPlaying && !player.playWhenReady) closePlayback() }
+            }
             // "Şarkı bitince dur" tetiklendiyse zamanlayıcıyı kapat
             if (!isPlaying && sleepTimer.state.value.endOfSong && player.playbackState == Player.STATE_READY &&
                 !player.playWhenReady
@@ -539,7 +563,7 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo
         ): MediaSession.ConnectionResult {
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
-                .buildUpon().add(likeCommand).build()
+                .buildUpon().add(likeCommand).add(closeCommand).build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
                 .build()
@@ -551,7 +575,10 @@ class PlaybackService : MediaLibraryService() {
             customCommand: SessionCommand,
             args: Bundle
         ): ListenableFuture<SessionResult> {
-            if (customCommand.customAction == CMD_LIKE) toggleLikeCurrent()
+            when (customCommand.customAction) {
+                CMD_LIKE -> toggleLikeCurrent()
+                CMD_CLOSE -> closePlayback()
+            }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
 
