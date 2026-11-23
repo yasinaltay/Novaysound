@@ -36,18 +36,42 @@ class UpdateRepository @Inject constructor(
 
     /** Daha yeni sürüm varsa döner, yoksa null. */
     suspend fun check(): UpdateInfo? = withContext(Dispatchers.IO) {
+        // GitHub API saatte 60 istekle sınırlı (mobil hatlarda IP paylaşıldığı için çabuk dolabiliyor);
+        // olmazsa sürüm sayfasının yönlendirmesinden okunur.
+        runCatching { checkApi() }.getOrElse { apiError ->
+            runCatching { checkWeb() }.getOrElse { throw apiError }
+        }
+    }
+
+    private val userAgent = "NovaySound/${BuildConfig.VERSION_NAME} (Android)"
+
+    /** github.com/.../releases/latest -> .../releases/tag/vX.Y.Z yönlendirmesinden sürümü al. */
+    private fun checkWeb(): UpdateInfo? {
+        val noRedirect = client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+        val location = noRedirect.newCall(
+            Request.Builder().url("https://github.com/$REPO/releases/latest").header("User-Agent", userAgent).build()
+        ).execute().use { it.header("Location") } ?: error("Sürüm bilgisi alınamadı")
+        val tag = location.substringAfterLast("/tag/", "").ifEmpty { error("Sürüm bilgisi alınamadı") }
+        val version = tag.removePrefix("v")
+        if (!Versions.isNewer(version, BuildConfig.VERSION_NAME)) return null
+        return UpdateInfo(version, "", "https://github.com/$REPO/releases/download/$tag/NovaySound-$tag.apk", 0)
+    }
+
+    private fun checkApi(): UpdateInfo? {
         val req = Request.Builder()
             .url("https://api.github.com/repos/$REPO/releases/latest")
             .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", userAgent)
             .build()
         val body = client.newCall(req).execute().use { r ->
+            if (r.code == 403 || r.code == 429) error("GitHub kısa süreli sınır koydu, biraz sonra tekrar dene")
             if (!r.isSuccessful) error("GitHub yanıtı: ${r.code}")
             r.body?.string().orEmpty()
         }
         val rel = json.decodeFromString(GhRelease.serializer(), body)
         val version = rel.tag_name.removePrefix("v")
-        val apk = rel.assets.firstOrNull { it.name.endsWith(".apk") } ?: return@withContext null
-        if (Versions.isNewer(version, BuildConfig.VERSION_NAME)) UpdateInfo(version, rel.body.orEmpty(), apk.browser_download_url, apk.size)
+        val apk = rel.assets.firstOrNull { it.name.endsWith(".apk") } ?: return null
+        return if (Versions.isNewer(version, BuildConfig.VERSION_NAME)) UpdateInfo(version, rel.body.orEmpty(), apk.browser_download_url, apk.size)
         else null
     }
 
