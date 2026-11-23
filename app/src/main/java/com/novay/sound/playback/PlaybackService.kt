@@ -919,12 +919,11 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun moodFor(q: String): com.novay.sound.data.smart.Mood? {
-        val M = com.novay.sound.data.smart.Mood
         val words = mapOf(
-            M.TURKU to "türkü|halk|bağlama", M.KARADENIZ to "karadeniz|horon|kemençe",
-            M.SPORT to "spor|antrenman|koşu", M.FOCUS to "odak|çalışma|ders|lofi", M.ROAD to "yol|yolculuk|araba",
-            M.CALM to "sakin|rahat", M.PARTY to "parti|eğlence|hareketli", M.ROMANTIC to "romantik|aşk",
-            M.SAD to "hüzün|hüzünlü|duygusal|acıklı", M.RAP to "rap|hip hop"
+            com.novay.sound.data.smart.Mood.TURKU to "türkü|halk|bağlama", com.novay.sound.data.smart.Mood.KARADENIZ to "karadeniz|horon|kemençe",
+            com.novay.sound.data.smart.Mood.SPORT to "spor|antrenman|koşu", com.novay.sound.data.smart.Mood.FOCUS to "odak|çalışma|ders|lofi", com.novay.sound.data.smart.Mood.ROAD to "yol|yolculuk|araba",
+            com.novay.sound.data.smart.Mood.CALM to "sakin|rahat", com.novay.sound.data.smart.Mood.PARTY to "parti|eğlence|hareketli", com.novay.sound.data.smart.Mood.ROMANTIC to "romantik|aşk",
+            com.novay.sound.data.smart.Mood.SAD to "hüzün|hüzünlü|duygusal|acıklı", com.novay.sound.data.smart.Mood.RAP to "rap|hip hop"
         )
         // Sadece "türkü", "türküler", "karadeniz şarkıları" gibi komutlar; "aşk olsun" gibi şarkı adları aramaya gider
         val stripped = q.replace(Regex("\\b(şarkı\\w*|müzi\\w*|liste\\w*|karışık)\\b"), " ").replace(Regex("\\s+"), " ").trim()
