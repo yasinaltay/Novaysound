@@ -114,8 +114,10 @@
         <!-- ===== Oynatma servisi (Media3 MediaLibraryService) =====
              Hem Media3 hem de eski MediaBrowserService intent'i: Android Auto
              ve Bluetooth/araç ekranları bu servise bağlanır. -->
+        <service android:name=".playback.TaskWatcherService" android:exported="false" android:stopWithTask="false" />
         <service
             android:name=".playback.PlaybackService"
+            android:stopWithTask="false"
             android:exported="true"
             android:foregroundServiceType="mediaPlayback"
             tools:ignore="ExportedService">

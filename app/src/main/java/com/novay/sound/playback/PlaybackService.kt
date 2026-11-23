@@ -62,6 +62,7 @@ class PlaybackService : MediaLibraryService() {
     companion object {
         const val CMD_LIKE = "novay.LIKE"
         const val CMD_CLOSE = "novay.CLOSE"
+        @Volatile var instance: java.lang.ref.WeakReference<PlaybackService>? = null
         const val ACTION_ALARM = "com.novay.sound.ALARM"
         const val ACTION_AUTOPLAY = "com.novay.sound.AUTOPLAY"
         private const val ALARM_NOTIFICATION = 77
@@ -119,6 +120,9 @@ class PlaybackService : MediaLibraryService() {
         scope.launch {
             delay(400)
             if (closing || player.mediaItemCount == 0) return@launch
+            // Aynı düzeni tekrar vermek bildirimi yenilemeyebilir: önce farklı, sonra asıl düzen
+            session?.setCustomLayout(ImmutableList.of(closeButton))
+            delay(150)
             session?.setCustomLayout(ImmutableList.of(likeButton(currentLiked), closeButton))
         }
     }
@@ -173,6 +177,7 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
         observeLikeState()
+        instance = java.lang.ref.WeakReference(this)
         watchNotification()
         scope.launch {
             settings.settings.collect {
@@ -274,14 +279,20 @@ class PlaybackService : MediaLibraryService() {
      * Uygulama son kullanılanlardan kaydırılınca: varsayılan olarak müzik durur ve servis kapanır.
      * "Uygulama kapatılınca çalmaya devam et" açıksa ve çalıyorsa devam eder.
      */
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        val keep = flags.on(Toggle.KEEP_PLAYING) && player.playWhenReady && player.mediaItemCount > 0 &&
+    override fun onTaskRemoved(rootIntent: Intent?) = onAppTaskRemoved("service")
+
+    fun onAppTaskRemoved(from: String) {
+        val keepSetting = flags.on(Toggle.KEEP_PLAYING)
+        val keep = keepSetting && player.playWhenReady && player.mediaItemCount > 0 &&
             player.playbackState != Player.STATE_ENDED
-        if (keep) return
+        CrashLogger.log("Uygulama kapatıldı ($from): çalmaya devam ayarı=${if (keepSetting) "AÇIK" else "kapalı"}",
+            Exception(if (keep) "müzik devam ediyor" else "müzik durduruldu"))
+        if (keep || closing) return
         closePlayback()
     }
 
     override fun onDestroy() {
+        instance = null
         saveQueue(sync = true)
         flushListen()
         crossfader.release()
@@ -352,6 +363,7 @@ class PlaybackService : MediaLibraryService() {
         session?.player?.let { if (it !== player) { it.pause(); it.stop() } }
         player.pause()
         player.stop()
+        player.playWhenReady = false
         stopSelf()
     }
 
